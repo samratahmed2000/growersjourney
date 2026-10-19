@@ -11,6 +11,7 @@
  * It prints the database name and connection state only. Credentials, the
  * connection string, and driver error payloads are never printed.
  */
+import { env } from "../config/env.js";
 import {
   connectDatabase,
   disconnectDatabase,
@@ -22,7 +23,7 @@ import {
 let exitCode = 1;
 
 try {
-  await connectDatabase();
+  await connectDatabase(env.mongodbUri);
 
   const reachable = await pingDatabase();
 

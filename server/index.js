@@ -1,37 +1,27 @@
-import express from "express";
-import cors from "cors";
 import { env } from "./config/env.js";
 import { connectDatabase, disconnectDatabase } from "./config/database.js";
-import healthRouter from "./routes/health.js";
+import { createApp } from "./app.js";
 
 /**
- * Express bootstrap.
+ * Process bootstrap.
  *
- * Startup order matters: configuration is validated on import, then the
- * database is connected, and only after that does the server start accepting
- * requests. If MongoDB cannot be reached, the process exits with code 1 rather
- * than serving traffic against a missing database.
+ * This file owns process-level concerns only: configuration, the database
+ * connection, listening, and shutdown. The HTTP application itself is built by
+ * `createApp()` in ./app.js, which keeps it testable without a database.
+ *
+ * Startup order matters: configuration is validated on import (see
+ * config/env.js), then the database is connected, and only after that does the
+ * server start accepting requests. If MongoDB cannot be reached, the process
+ * exits with code 1 rather than serving traffic against a missing database.
  */
 
-const app = express();
-
-// CORS is restricted to the configured frontend origin(s). Credentials are not
-// enabled yet, and a wildcard origin must never be combined with credentials.
-app.use(cors({ origin: env.frontendUrls }));
-app.use(express.json());
-
-// Versioned API routes. Health checks live in ./routes/health.js.
-app.use("/api/v1", healthRouter);
-
-app.get("/", (req, res) => {
-  res.send("Server is running");
-});
+const app = createApp({ allowedOrigins: env.frontendUrls });
 
 // ---------------------------------------------------------------------------
 // Connect before listening. Fail fast and clearly if the database is down.
 // ---------------------------------------------------------------------------
 try {
-  await connectDatabase();
+  await connectDatabase(env.mongodbUri);
   console.log("[db] MongoDB connected.");
 } catch (error) {
   // Only the error type is reported; driver errors can echo connection details.

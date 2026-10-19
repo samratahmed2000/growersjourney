@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { env } from "./env.js";
 
 /**
  * The ONLY place in the backend that manages the MongoDB connection.
@@ -11,6 +10,11 @@ import { env } from "./env.js";
  *   planned in docs/DATABASE.md.
  * - Connection details, the URI, and credentials are never logged. Error
  *   messages stay generic on purpose.
+ * - The connection string is passed in rather than read from `config/env.js`.
+ *   That keeps the env-validation side effect (which exits the process when
+ *   configuration is missing) out of the HTTP layer, so the app can be imported
+ *   and tested without a database. `index.js` and `scripts/check-db.js` pass
+ *   `env.mongodbUri` explicitly.
  */
 
 /** How long to wait for a usable server before giving up. Keeps startup fast. */
@@ -61,11 +65,17 @@ function registerConnectionListeners() {
 /**
  * Open the shared connection.
  * Throws if MongoDB cannot be reached, so the caller can decide how to fail.
+ *
+ * @param {string} uri MongoDB connection string (from `env.mongodbUri`).
  */
-export async function connectDatabase() {
+export async function connectDatabase(uri) {
+  if (!uri) {
+    throw new Error("connectDatabase() requires a MongoDB connection string");
+  }
+
   registerConnectionListeners();
 
-  await mongoose.connect(env.mongodbUri, {
+  await mongoose.connect(uri, {
     serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS,
     connectTimeoutMS: CONNECT_TIMEOUT_MS,
   });

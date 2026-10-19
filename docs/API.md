@@ -157,6 +157,13 @@ A route's role label is only a baseline. The backend must also check resource ow
 
 Only include safe, useful validation details. Never expose stack traces, secrets, or internal infrastructure information in production responses.
 
+**Implemented behavior (Task 03).** The envelope above is produced by `server/utils/api-response.js` (`sendSuccess` / `sendError`); every route and middleware uses it, so the shape is identical everywhere. Notes:
+
+- `error.details` is included **only** when there is at least one entry, so a plain 404 or 500 body is `{ "success": false, "error": { "code": "...", "message": "..." } }`.
+- The `paginated` shape is specified here but **not implemented** — no list endpoint exists yet.
+- Every response carries an `x-request-id` header (server-generated, never taken from the client). The same id appears in the server request log and in server-side error logs, which is how a reported problem is traced without exposing internal details.
+- Stack traces and internal error messages are **never** part of a response, in any environment. `NODE_ENV` defaults to `development`, so a "production-only" rule would have been meaningless.
+
 ---
 
 ## 6. HTTP Status Codes
@@ -179,6 +186,30 @@ Only include safe, useful validation details. Never expose stack traces, secrets
 | `503`  | Service temporarily unavailable                 |
 
 Choose a consistent policy for `400` versus `422`; do not use them interchangeably without a documented reason.
+
+### Implemented status codes and error codes (Task 03)
+
+`400` is this project's choice for invalid input, including failed validation and malformed JSON; **`422` is not used**.
+
+| Status | Error code            | When                                                                     |
+| ------ | --------------------- | ------------------------------------------------------------------------ |
+| `400`  | `VALIDATION_ERROR`    | Zod request validation failed (`details`: `[{ field, message }]`)         |
+| `400`  | `INVALID_JSON`        | The request body is not valid JSON                                       |
+| `404`  | `NOT_FOUND`           | Unmatched route, wrong method on a known path, or a missing resource     |
+| `413`  | `PAYLOAD_TOO_LARGE`   | The request body exceeded the JSON limit                                 |
+| `429`  | `RATE_LIMIT_EXCEEDED` | Reserved for the future rate limiter; not returned yet                   |
+| `500`  | `INTERNAL_ERROR`      | An unexpected server failure; the client only ever sees a generic message |
+| `503`  | `DATABASE_UNAVAILABLE` | The readiness check could not reach MongoDB                             |
+
+Rules that apply to every response:
+
+- JSON request bodies are limited to **`100kb`** (`express.json({ limit })` in `server/app.js`). Requests over the limit are rejected with `413` before any route runs.
+- Malformed JSON is answered with `400 INVALID_JSON`, never a framework error page.
+- Unmatched routes always return the JSON `NOT_FOUND` envelope — including non-API paths such as `/nope` — so this server never replies with Express's default HTML page.
+- Unexpected errors return the generic message `"Something went wrong."`; the original message and stack are logged server-side with the request id only.
+- Validation `details` contain only a field path and the schema's message. The submitted value is never echoed back, so rejected input cannot leak back to the caller.
+- CORS stays restricted to the origins in `FRONTEND_URL`; a disallowed `Origin` receives no `Access-Control-Allow-Origin` header.
+- `x-powered-by` is disabled.
 
 ---
 

@@ -385,6 +385,49 @@ backend/
 └── tsconfig.json
 ```
 
+### Implemented backend layout (current)
+
+The tree above is the target design. What exists today is plain **JavaScript ESM**, not TypeScript:
+
+```text
+server/
+├── app.js                 # createApp(): middleware stack + routes (no DB, no env)
+├── index.js               # process bootstrap: env -> connect DB -> listen -> shutdown
+├── config/
+│   ├── env.js             # reads and validates process.env; the only `dotenv` user
+│   └── database.js        # the only MongoDB connection owner; URI is passed in
+├── middleware/
+│   ├── request-id.js      # generates `x-request-id`, sets req.id
+│   ├── request-logger.js  # one log line per completed request
+│   ├── validate.js        # Zod validation -> req.validated
+│   ├── not-found.js       # terminal JSON 404
+│   └── error-handler.js   # last middleware; maps errors to the response envelope
+├── routes/
+│   └── health.js
+├── utils/
+│   ├── api-response.js    # sendSuccess / sendError (the standard envelope)
+│   ├── http-error.js      # HttpError + badRequest / notFoundError / payloadTooLarge
+│   └── request-path.js    # full request path, query string stripped
+├── scripts/
+│   └── check-db.js
+├── tests/                 # Node's built-in runner (`npm test`)
+└── .env.example
+```
+
+Actual middleware order in `app.js` — the order is load-bearing:
+
+```text
+request id -> request logger -> cors -> express.json({ limit: "100kb" })
+           -> /api/v1 routes -> GET / -> not found -> error handler
+```
+
+Why it is arranged this way:
+
+- `createApp()` deliberately does **not** import `config/env.js`. That module validates configuration and calls `process.exit(1)` when something is missing, which would make the HTTP layer impossible to import in a test. The connection string is passed to `connectDatabase(uri)` by `index.js` instead.
+- `createApp()` accepts `{ allowedOrigins, jsonLimit, logRequests }` so tests can run without a database, on an ephemeral port, with request logging off.
+- The not-found handler and the error handler are registered last; the error handler keeps all four parameters because that is how Express identifies an error handler.
+- `request-id` runs first so every later log line and error log can be correlated by id.
+
 ### Backend request flow
 
 ```text
@@ -863,6 +906,28 @@ Return safe messages to users. Keep detailed diagnostic information in access-co
 
 Never expose passwords, session tokens, API keys, database connection strings, or payment secrets in logs or error responses.
 
+### Implemented error codes and validation (Task 03)
+
+The category list above is the target naming. The codes that are actually returned today are:
+
+```text
+VALIDATION_ERROR      400  Zod request validation failed (details: [{ field, message }])
+INVALID_JSON          400  request body is not valid JSON
+NOT_FOUND             404  unmatched route, wrong method, or missing resource
+PAYLOAD_TOO_LARGE     413  body exceeded the JSON limit (100kb by default)
+RATE_LIMIT_EXCEEDED   429  reserved; not returned yet (no rate limiter installed)
+INTERNAL_ERROR        500  unexpected server failure (generic message only)
+DATABASE_UNAVAILABLE  503  readiness check could not reach MongoDB
+```
+
+- Validation lives in `server/middleware/validate.js` and uses **Zod 4** (`zod@^4`). It runs at the API boundary, before any controller.
+- Parsed input is stored on `req.validated` (`{ params, query, body }`) rather than written back onto the request. In Express 5, `req.query` is a getter-only property, so assigning to it throws; one predictable location is also easier to reason about.
+- Zod object schemas strip unknown keys, so unexpected or privileged fields (for example a client-supplied `role`) are discarded instead of reaching the database layer.
+- Validation failures return only a field path and the schema's message. The submitted value is never echoed back, because rejected input can itself contain secrets.
+- Stack traces are never sent to a client in any environment. Full diagnostics are written to server-side logs with the request id.
+- Error text is **redacted before logging** (`server/utils/redact.js`): credentials in URLs, `Bearer`/`Basic` values, `key=value`/`key: value` forms, and JWTs are masked, and long text is truncated. Ordinary lines are left untouched so logs stay readable. Redaction is applied to `error.message` and `error.stack`, since a driver or SDK message can embed a connection string.
+- Request bodies, headers, cookies, and query strings are never logged at all. Note that a body-parser error carries the offending body in `error.body`; it is deliberately never read.
+
 ---
 
 ## 16. Environment Configuration
@@ -985,6 +1050,21 @@ Test important user journeys:
 7. Payment status changes only after server-side verification.
 
 Use test data and test credentials. Never run destructive tests against production data.
+
+### Implemented test tooling (Task 03)
+
+The backend uses Node's built-in test runner, so **no test dependency is installed**:
+
+```bash
+cd server
+npm test           # node --test
+npm run test:watch # node --test --watch
+```
+
+- Tests live in `server/tests/*.test.js` and use `node:assert/strict` and the global `fetch`.
+- `server/tests/helpers/server.js` starts the app on port `0` (ephemeral) with request logging disabled, and closes connections before shutting the server down.
+- The tests require **no MongoDB**: liveness must not depend on the database, and readiness is asserted to degrade to `503`.
+- Jest, Vitest, Supertest, and Playwright are **not** installed. Do not document them as available; introducing one is a deliberate decision to confirm with the owner first.
 
 ---
 

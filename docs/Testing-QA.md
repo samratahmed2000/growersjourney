@@ -68,6 +68,8 @@ Potential choices:
 
 These are recommendations, not mandatory dependencies. Prefer the toolchain already configured in the repository when suitable.
 
+**What is actually installed (check `package.json` before relying on any of the above):** the backend uses Node's built-in `node --test` runner with `node:assert/strict` and the global `fetch` — no Jest, Vitest, or Supertest is installed. The frontend has ESLint and `tsc --noEmit`, and no test runner at all. Installing a test framework is a deliberate decision, not a default; confirm before adding one.
+
 ## 5. Unit Testing
 
 Test important business logic independently of the database, network, or UI.
@@ -186,6 +188,21 @@ For every endpoint, verify:
 | Excessive repeated requests              | Rate limit applied where configured            |
 
 Use a test database or isolated test collections. Never run destructive test cases against production data.
+
+### Implemented backend coverage (Task 03)
+
+`cd server && npm test` runs these files (34 tests, all passing at the time of writing):
+
+| File                   | Covers                                                                                                                        |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `health.test.js`       | liveness envelope at `/api/v1/health`, readiness `503` without a database, `GET /`, generated `x-request-id`, no `x-powered-by` |
+| `not-found.test.js`    | JSON `404` envelope for unknown paths and wrong methods, and never an HTML page                                                |
+| `errors.test.js`       | malformed JSON → `400 INVALID_JSON`, oversized body → `413`, unexpected error → generic `500` with no leaked message or stack, `HttpError` passthrough, rejected async handlers forwarded to the error handler, credentials redacted in the server log |
+| `logging.test.js`      | logs contain no bodies, headers, cookies, or query strings; rejected bodies never logged; client-supplied `x-request-id` ignored; full path (with mount prefix) logged; logging can be disabled |
+| `validation.test.js`   | `req.validated` population, unknown-key stripping, `400 VALIDATION_ERROR` field details, submitted values never echoed            |
+| `redact.test.js`       | redacts MongoDB/URL credentials, `Bearer`/`Basic` values, `key=value` forms, JWTs; leaves ordinary text unchanged; truncates long text |
+
+These tests never open a MongoDB connection and never touch real data — they start the app on an ephemeral port. The failure paths currently covered are items 2, 3, 6, 7, and 8 from the list above; items 1, 4, 5, 9, and 10 need business routes, authentication, and a rate limiter that do not exist yet.
 
 ## 8. Authentication and Authorization Testing
 
@@ -440,6 +457,17 @@ npm run build
 These commands are examples. Script names vary by project, so inspect `package.json` and run the commands that actually exist.
 
 If frontend and backend use separate package configurations, execute the relevant checks in each workspace.
+
+### Concrete commands for this repository
+
+```bash
+cd client && npm run lint        # passes
+cd client && npm run typecheck   # fails while route files are still empty placeholders
+cd client && npm run build       # fails for the same reason
+cd server && npm test            # node --test; passes (no database required)
+```
+
+`server/` has no linter configured. State honestly which commands were run, and report failures with the real reason rather than describing them as passing.
 
 Do not hide failing checks, skip required validations without explanation, or report commands as passed if they were not executed.
 

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getDatabaseState, pingDatabase } from "../config/database.js";
+import { sendError, sendSuccess } from "../utils/api-response.js";
 
 /**
  * Health routers.
@@ -18,36 +19,23 @@ import { getDatabaseState, pingDatabase } from "../config/database.js";
 const router = Router();
 
 router.get("/health", (req, res) => {
-  res.status(200).json({
-    success: true,
-    data: {
-      status: "ok",
-    },
-  });
+  sendSuccess(res, { status: "ok" });
 });
 
 router.get("/health/ready", async (req, res) => {
   const isReachable = await pingDatabase();
 
   if (!isReachable) {
-    res.status(503).json({
-      success: false,
-      error: {
-        code: "DATABASE_UNAVAILABLE",
-        message: "The database is not reachable.",
-        details: [{ database: getDatabaseState() }],
-      },
+    sendError(res, {
+      status: 503,
+      code: "DATABASE_UNAVAILABLE",
+      message: "The database is not reachable.",
+      details: [{ database: getDatabaseState() }],
     });
     return;
   }
 
-  res.status(200).json({
-    success: true,
-    data: {
-      status: "ready",
-      database: "connected",
-    },
-  });
+  sendSuccess(res, { status: "ready", database: "connected" });
 });
 
 export default router;
