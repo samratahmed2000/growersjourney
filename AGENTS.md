@@ -33,9 +33,13 @@ Server (from `server/`):
 ## Verified current state (do not trust docs over this)
 
 - `npm run lint` (client) passes.
-- `npm run build` (client) **fails**: TypeScript reports ~20 empty route files as "not a module" (see below).
-- `npm run typecheck` (client) **fails** for the same reason: ~20 files under `src/app/` are still empty 0-byte placeholders, so Next's generated validators report them as "not a module". The count was 25 before Task 01 filled `error.tsx`, `loading.tsx`, `not-found.tsx`, and `(public)/page.tsx`.
-- Most pages are still empty placeholders: `(auth)/login`, `(public)/{about,contact,privacy-policy,process,services,terms,work/[slug]}`, all 8 `admin/*`, all 4 `portal/*`, `robots.ts`, `sitemap.ts`, `src/lib/utils.ts`, `src/types/type.ts`. `src/components/*`, `src/features/*`, `src/lib/auth`, `src/lib/validation`, `src/hook` do not exist yet. `globals.css` is only `@import "tailwindcss";`.
+- `npm run typecheck` (client) passes.
+- `npm run build` (client) passes: 28 prerendered entries. `npm run lint` is now clean; the earlier 80 typecheck errors and the failing build were caused by empty 0-byte route files, which no longer exist.
+- The **public website is implemented** (Task 04): `/`, `/services`, `/work`, `/work/[slug]` (3 concepts), `/about`, `/process`, `/contact`, `/privacy-policy`, `/terms`, plus `robots.ts`, `sitemap.ts`, and branded `not-found`/`error`/`loading`.
+- `src/components/` now exists: `ui/` (container, section, section-heading, page-hero, button, card, badge, icon), `layout/` (wordmark, site-header, desktop-nav, mobile-nav, site-footer), `marketing/` (hero, hero-visual, service-card, project-card, project-cover, project-filter, process-steps, differentiators, founder-note, tech-strip, faq, cta-band, contact-form, legal-page), `shared/placeholder-page`.
+- Content lives in `src/lib/content/` (`site.ts`, `services.ts`, `projects.ts`, `process.ts`, `legal.ts`); domain types in `src/types/type.ts`; `cn()` in `src/lib/utils.ts`. `globals.css` now holds the `@theme` design tokens.
+- **Not implemented**: authentication, admin dashboard, client portal, any backend business route, and any contact-form submission. Those 13 routes render `PlaceholderPage` with `robots: { index: false }` and are excluded in `robots.ts`. `src/features/*`, `src/lib/auth`, `src/lib/validation`, `src/hook` still do not exist.
+- Portfolio content is 3 **concepts** with `isSample: true`, labelled "Concept"/"Sample concept" in the UI. There are no client names, testimonials, logos, metrics, or designed-and-delivered case studies anywhere.
 - The backend works: env validation, Mongoose connection, `GET /api/v1/health`, `GET /api/v1/health/ready`, `GET /`, and the frontend↔backend link via `client/src/app/dev/health/page.tsx`.
 - Task 03 is implemented and verified: `server/app.js` (`createApp`), `server/middleware/*` (request id, request logger, validate, not-found, error-handler), `server/utils/*` (`api-response`, `http-error`, `request-path`, `redact`), and `server/tests/*` — 34 tests, all passing. A consistent JSON envelope, JSON 404s, Zod validation, `100kb` body limit, and secret-safe logging with redaction are in place. No business routes exist yet, so `validate()` is only exercised by tests.
 - Do not describe the unimplemented parts as "implemented".
@@ -48,8 +52,13 @@ Server (from `server/`):
 - Tailwind v4 is wired through a Turbopack rule in `next.config.ts` (`*.css` → `@tailwindcss/turbopack`). Kept as-is intentionally.
 - Working dir is `src/hook/` (singular). Docs say `hooks/` — trust the filesystem.
 - `tsconfig.json` includes `.next/dev/types/**` and `.next/types/**`; a stale `.next/` can surface confusing type errors — clear it before deep debugging.
-- `client/.env.example` documents the single server-side variable `API_BASE_URL`; copy it to `client/.env.local` for local development. `client/.env.local` exists locally and is git-ignored.
+- `client/.env.example` documents the server-side `API_BASE_URL` **and** the public `NEXT_PUBLIC_SITE_URL` (used for `metadataBase`, canonical URLs, `robots.txt`, and `sitemap.xml`, with a `http://localhost:3000` fallback). Copy the file to `client/.env.local`; it exists locally and is git-ignored. Never put a secret behind `NEXT_PUBLIC_*`.
 - `client/src/lib/api/client.ts` is the only API helper: server-only, reads `API_BASE_URL` (never `NEXT_PUBLIC_*`) and returns a result object instead of throwing.
+- Design tokens live in `@theme` inside `src/app/globals.css` (`brand-950/900/800/700`, `accent-500/600`, `canvas`, `surface`, `ink`, `muted`, `line`). Components use those utilities instead of hex values. Display font variable is `--font-inter` (it was misnamed `--font-geist-sans` before Task 04).
+- **Contrast rule** (measured, see the note in `globals.css`): `#16A36A` (accent-500) on white is ≈3.2:1 and fails WCAG AA for normal text, so it is only used for large text on dark, icons, borders, and focus accents. `#0F7048` (accent-600) is the interactive accent — ≈6.1:1 with white text and ≈5.7:1 as text on the canvas background — so links, eyebrows, badges, and accent buttons use it. Primary buttons are `brand-900` (≈12.3:1 with white). All 24 text/graphic pairs used on the site were checked and meet their target.
+- Only four Client Components exist on the public site: `layout/desktop-nav.tsx`, `layout/mobile-nav.tsx` (both need `usePathname`), `marketing/project-filter.tsx`, and `marketing/contact-form.tsx`. Everything else is a Server Component. The mobile menu is a disclosure panel, not a modal, so it needs no focus trap.
+- `/work/[slug]` uses `generateStaticParams` + `notFound()`. **`export const dynamicParams` fails the build** with `cacheComponents: true` ("Route segment config dynamicParams is not compatible"). Because the response shell streams before `notFound()` runs, unknown slugs would otherwise return HTTP 200 with a `noindex` tag. `src/proxy.ts` (the Next 16 rename of middleware) rewrites unknown `/work/*` slugs to `/_not-found`, which returns a real 404; it is scoped by `config.matcher` so no other route pays for it.
+- The global `loading.tsx` creates a Suspense boundary for every route, which is what starts streaming (and fixes the status code at 200) — relevant if a future task needs a real non-200 status from a page.
 
 ## Server gotchas
 
@@ -69,7 +78,7 @@ Server (from `server/`):
 
 ## Planned stack vs installed (do not assume)
 
-Docs describe a future target. Installed on the server today: Express, `cors`, `dotenv`, **Mongoose 9**, **Zod 4**. Tests use Node's built-in runner, so there is no test dependency at all. Still **not installed anywhere**: TypeScript on the server, Better Auth, shadcn/ui, Lucide, React Hook Form, Jest/Vitest/Supertest/Playwright. Verify in `package.json` before importing or documenting a library. Introducing one is a deliberate decision — confirm with the owner first.
+Docs describe a future target. Installed on the server today: Express, `cors`, `dotenv`, **Mongoose 9**, **Zod 4**. Tests use Node's built-in runner, so there is no test dependency at all. Installed on the client today: `next`, `react`, `react-dom`, and **`lucide-react` 1.59** (icons only; no shadcn/ui, Radix, clsx, or tailwind-merge — `cn()` is hand-written in `src/lib/utils.ts`). Still **not installed anywhere**: TypeScript on the server, Better Auth, shadcn/ui, React Hook Form, Jest/Vitest/Supertest/Playwright. Verify in `package.json` before importing or documenting a library. Introducing one is a deliberate decision — confirm with the owner first.
 
 ## Project rules to keep
 
