@@ -9,7 +9,7 @@ import { SITE } from "@/lib/content/site";
 export const metadata: Metadata = {
   title: "Contact",
   description:
-    "Tell Growers Journy about the project. Email and phone details are published here; the contact form is UI-only until the backend is connected.",
+    "Tell Growers Journy about the project. Send an enquiry through the form, or use the published email and phone details.",
   alternates: { canonical: "/contact" },
 };
 
@@ -37,9 +37,8 @@ export default function ContactPage() {
               Project enquiry
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-muted">
-              Fields marked with an asterisk are required. The form is not
-              connected to the backend yet, so nothing is transmitted or stored —
-              the direct contact details are listed alongside.
+              Fields marked with an asterisk are required. Your enquiry is sent
+              to the Growers Journy backend and stored so it can be answered.
             </p>
 
             <div className="mt-8 rounded-2xl border border-line bg-surface p-6 sm:p-8">
@@ -105,16 +104,16 @@ export default function ContactPage() {
                 Your information
               </h2>
               <p className="mt-4 text-sm leading-relaxed text-muted">
-                Nothing entered in the form is stored while the form is
-                disconnected. Once it is connected to the backend, the{" "}
+                The details you submit are stored so the enquiry can be
+                answered and followed up. They are not sold or added to a
+                mailing list. The{" "}
                 <Link
                   href="/privacy-policy"
                   className="font-medium text-accent-600 underline decoration-accent-500/40 underline-offset-4 transition-colors hover:text-brand-900"
                 >
                   privacy policy
                 </Link>{" "}
-                will be updated first to describe exactly what is collected and
-                why.
+                describes what is collected and why.
               </p>
             </div>
           </aside>

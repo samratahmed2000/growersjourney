@@ -191,18 +191,38 @@ Use a test database or isolated test collections. Never run destructive test cas
 
 ### Implemented backend coverage (Task 03)
 
-`cd server && npm test` runs these files (34 tests, all passing at the time of writing):
+`cd server && npm test` runs these files (70 tests, all passing at the time of writing):
 
-| File                   | Covers                                                                                                                        |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `health.test.js`       | liveness envelope at `/api/v1/health`, readiness `503` without a database, `GET /`, generated `x-request-id`, no `x-powered-by` |
-| `not-found.test.js`    | JSON `404` envelope for unknown paths and wrong methods, and never an HTML page                                                |
-| `errors.test.js`       | malformed JSON → `400 INVALID_JSON`, oversized body → `413`, unexpected error → generic `500` with no leaked message or stack, `HttpError` passthrough, rejected async handlers forwarded to the error handler, credentials redacted in the server log |
-| `logging.test.js`      | logs contain no bodies, headers, cookies, or query strings; rejected bodies never logged; client-supplied `x-request-id` ignored; full path (with mount prefix) logged; logging can be disabled |
-| `validation.test.js`   | `req.validated` population, unknown-key stripping, `400 VALIDATION_ERROR` field details, submitted values never echoed            |
-| `redact.test.js`       | redacts MongoDB/URL credentials, `Bearer`/`Basic` values, `key=value` forms, JWTs; leaves ordinary text unchanged; truncates long text |
+| File                         | Covers                                                                                                                        |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `health.test.js`             | liveness envelope at `/api/v1/health`, readiness `503` without a database, `GET /`, generated `x-request-id`, no `x-powered-by` |
+| `not-found.test.js`          | JSON `404` envelope for unknown paths and wrong methods, and never an HTML page                                                |
+| `errors.test.js`             | malformed JSON → `400 INVALID_JSON`, oversized body → `413`, unexpected error → generic `500` with no leaked message or stack, `HttpError` passthrough, rejected async handlers forwarded to the error handler, credentials redacted in the server log |
+| `logging.test.js`            | logs contain no bodies, headers, cookies, or query strings; rejected bodies never logged; client-supplied `x-request-id` ignored; full path (with mount prefix) logged; logging can be disabled |
+| `validation.test.js`         | `req.validated` population, unknown-key stripping, `400 VALIDATION_ERROR` field details, submitted values never echoed            |
+| `redact.test.js`             | redacts MongoDB/URL credentials, `Bearer`/`Basic` values, `key=value` forms, JWTs; leaves ordinary text unchanged; truncates long text |
+| `inquiries.test.js`          | `POST /api/v1/inquiries`: valid → `201` with a generic body, normalization, `NEW` forced server-side, no PII echoed; missing required fields; invalid email; unsafe/invalid URLs; over-long fields; internal fields (`status`, `notes`, `assignedTo`, `convertedClientId`) rejected; honeypot accepted and discarded; injected repository failure → generic `500` with credentials redacted in the log; `429` with `Retry-After`; oversized body → `413`; malformed JSON; CORS preflight and exposed retry header; unsupported method → JSON `404` |
+| `inquiry-validation.test.js` | strict schema: email/URL normalization, blank optionals, service allowlist, length limits, unknown keys |
+| `inquiry-model.test.js`      | offline Mongoose validation: collection name, timestamps, default `NEW`, email lower-casing, blank optionals, required fields, enums, limits |
 
-These tests never open a MongoDB connection and never touch real data — they start the app on an ephemeral port. The failure paths currently covered are items 2, 3, 6, 7, and 8 from the list above; items 1, 4, 5, 9, and 10 need business routes, authentication, and a rate limiter that do not exist yet.
+These tests never open a MongoDB connection and never touch real data — they start the app on an ephemeral port. With Task 05 they also cover item 1 (a valid inquiry) and item 9 (the inquiry rate limit), using an injected repository. Item 4 (authentication) is still unimplemented, item 5 (authorization) needs authenticated routes, and item 10 (unauthorized data exposure) will be exercised when the admin API exists.
+
+What is **not** automated: the actual `Inquiry.create()` write to MongoDB. There is no test database and no in-memory MongoDB dependency. Verify it manually against a development database, never against production data.
+
+### Frontend contact form (manual)
+
+The client has no test runner, so the form states are verified in a browser against a running API:
+
+| Scenario                         | Expected                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| Valid submission                 | Button shows "Sending…", then a focused success panel; inputs cleared     |
+| Double-click submit              | Exactly one network request                                              |
+| Missing name/service/description | Inline field errors, focus moves to the first one, no request sent       |
+| Server rejects a field           | The server's message appears under that field; input preserved           |
+| API stopped / wrong base URL     | "Your enquiry was not sent" with the direct email and phone; input kept   |
+| Sixth submission in 15 minutes   | Rate-limit message with the retry delay; input kept                       |
+| Keyboard only                    | All fields, honeypot skipped, submit reachable, notices announced        |
+
 
 ## 8. Authentication and Authorization Testing
 

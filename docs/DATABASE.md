@@ -244,6 +244,33 @@ interface Inquiry {
 
 `assignedTo` and `convertedClientId` should use the chosen identifier type consistently. If these become MongoDB references, define the corresponding schema references rather than leaving them as arbitrary strings.
 
+### Implemented in Task 05
+
+`server/models/inquiry.js` implements the model for the public contact form. The
+same limits live in `server/constants/inquiry.js` and are enforced again by the
+Zod schema in `server/validators/inquiry.js`.
+
+| Field                | Stored as  | Rule                                                        |
+| -------------------- | ---------- | ----------------------------------------------------------- |
+| `name`               | String     | required, trimmed, 2–100                                    |
+| `email`              | String     | required, trimmed, lower-cased, ≤254                        |
+| `company`            | String     | optional, trimmed, ≤120; blank is stored as absent          |
+| `service`            | String     | required enum: the four public service slugs                 |
+| `projectDescription` | String     | required, trimmed, 20–5000                                  |
+| `budget`             | String     | optional, ≤100; blank is stored as absent                   |
+| `timeline`           | String     | optional, ≤100; blank is stored as absent                   |
+| `referenceUrl`       | String     | optional, normalized `http(s)` URL, ≤2048                   |
+| `status`             | String     | enum, required, default `NEW`; never accepted from a request |
+| `createdAt`/`updatedAt` | Date    | Mongoose `timestamps: true`                                 |
+
+- Collection: `inquiries` (explicit, not inferred).
+- Index: `{ status: 1, createdAt: -1 }`, for the future admin list.
+- No unique index on `email`; one person may legitimately submit more than once.
+- `notes`, `assignedTo`, and `convertedClientId` are **not** implemented yet.
+  They belong to the admin phase and must never be writable by the public route.
+- The raw network address used for rate limiting is held in memory by the rate
+  limiter and is not stored on the inquiry.
+
 ---
 
 ## 9. Client Model

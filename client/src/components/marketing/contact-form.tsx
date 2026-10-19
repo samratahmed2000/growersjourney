@@ -1,22 +1,32 @@
 "use client";
 
 import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { AlertCircle, Mail, Phone } from "lucide-react";
+import Link from "next/link";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { services } from "@/lib/content/services";
 import { SITE } from "@/lib/content/site";
+import {
+  submitInquiry,
+  type InquiryFieldErrors,
+} from "@/lib/api/inquiries";
 import { cn } from "@/lib/utils";
 
 /**
- * Contact form — UI only, by explicit instruction for this task.
+ * Contact form — the public inquiry form.
  *
- * It deliberately does NOT fake a submission. There is no endpoint yet, so
- * after a valid submit the page says plainly that nothing was sent and offers
- * the direct email and phone instead. A fake "Thanks, we'll be in touch"
- * message would be a lie to the visitor, so there is no success state here.
+ * Validation happens twice on purpose: here for fast, friendly feedback, and
+ * again on the Express server, which is the actual trust boundary. This form
+ * never decides whether an enquiry is acceptable; it only reports what the
+ * server said.
  *
- * When the backend route exists, replace `handleSubmit`'s last step with a
- * fetch to the API and keep the same validation rules on the server.
+ * State rules:
+ * - Input is preserved on every failure. Losing a long project description
+ *   because the network blipped would be unacceptable.
+ * - The submit button is disabled while a request is in flight, and a ref
+ *   guards against a second submit before React re-renders.
+ * - Nothing claims success until the API returns 201. No email is sent
+ *   automatically, and the form does not pretend otherwise.
  */
 
 type FormValues = {
@@ -32,6 +42,19 @@ type FormValues = {
 
 type FormErrors = Partial<Record<keyof FormValues, string>>;
 
+type Failure = {
+  kind:
+    | "validation"
+    | "rate-limited"
+    | "timeout"
+    | "network"
+    | "server"
+    | "config";
+  message: string;
+};
+
+type Status = "idle" | "submitting" | "success" | "error";
+
 const EMPTY_VALUES: FormValues = {
   fullName: "",
   email: "",
@@ -43,26 +66,107 @@ const EMPTY_VALUES: FormValues = {
   referenceUrl: "",
 };
 
+/**
+ * Mirrors the server limits in `server/constants/inquiry.js`.
+ * These are usability checks only. The server rejects anything that slips past.
+ */
+const LIMITS = {
+  name: 100,
+  email: 254,
+  company: 120,
+  description: 5000,
+  budget: 100,
+  timeline: 100,
+  referenceUrl: 2048,
+} as const;
+
+const DESCRIPTION_MIN = 20;
+
 /** Deliberately permissive: a stricter pattern rejects valid addresses. */
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+/** Any leading scheme, so `javascript:` and `ftp:` can be rejected early. */
+const SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
+
+/** Maps the server's field names to this form's field names. */
+const SERVER_FIELDS: Record<string, keyof FormValues> = {
+  name: "fullName",
+  email: "email",
+  company: "company",
+  service: "service",
+  projectDescription: "projectDescription",
+  budget: "budget",
+  timeline: "timeline",
+  referenceUrl: "referenceUrl",
+};
+
+function emptyToUndefined(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
 function validate(values: FormValues): FormErrors {
   const errors: FormErrors = {};
+  const name = values.fullName.trim();
+  const email = values.email.trim();
+  const description = values.projectDescription.trim();
 
-  if (values.fullName.trim().length < 2) {
+  if (name.length < 2) {
     errors.fullName = "Please enter your name.";
+  } else if (name.length > LIMITS.name) {
+    errors.fullName = `Please use ${LIMITS.name} characters or fewer.`;
   }
 
-  if (!EMAIL_PATTERN.test(values.email.trim())) {
+  if (!EMAIL_PATTERN.test(email)) {
     errors.email = "Please enter a valid email address.";
+  } else if (email.length > LIMITS.email) {
+    errors.email = "Please use a shorter email address.";
   }
 
-  if (values.projectDescription.trim().length < 20) {
+  if (!values.service) {
+    errors.service = "Please choose a service, or select “Not sure yet”.";
+  }
+
+  if (description.length < DESCRIPTION_MIN) {
     errors.projectDescription =
       "Please describe the project in at least a sentence or two.";
+  } else if (description.length > LIMITS.description) {
+    errors.projectDescription = `Please use ${LIMITS.description} characters or fewer.`;
+  }
+
+  if (values.company.trim().length > LIMITS.company) {
+    errors.company = `Please use ${LIMITS.company} characters or fewer.`;
+  }
+
+  if (values.budget.trim().length > LIMITS.budget) {
+    errors.budget = `Please use ${LIMITS.budget} characters or fewer.`;
+  }
+
+  if (values.timeline.trim().length > LIMITS.timeline) {
+    errors.timeline = `Please use ${LIMITS.timeline} characters or fewer.`;
+  }
+
+  const referenceUrl = values.referenceUrl.trim();
+  if (referenceUrl.length > LIMITS.referenceUrl) {
+    errors.referenceUrl = "Please use a shorter link.";
+  } else if (SCHEME_PATTERN.test(referenceUrl) && !/^https?:/i.test(referenceUrl)) {
+    errors.referenceUrl = "Only http:// or https:// links are supported.";
   }
 
   return errors;
+}
+
+function mapServerFieldErrors(fieldErrors: InquiryFieldErrors): FormErrors {
+  const mapped: FormErrors = {};
+
+  for (const [field, message] of Object.entries(fieldErrors)) {
+    const target = SERVER_FIELDS[field];
+    if (target && !mapped[target]) {
+      mapped[target] = message;
+    }
+  }
+
+  return mapped;
 }
 
 const INPUT_CLASS =
@@ -129,39 +233,178 @@ export function ContactForm() {
   const [values, setValues] = useState<FormValues>(EMPTY_VALUES);
   const [errors, setErrors] = useState<FormErrors>({});
   const [attempted, setAttempted] = useState(false);
-  const [noticeVisible, setNoticeVisible] = useState(false);
+  const [status, setStatus] = useState<Status>("idle");
+  const [failure, setFailure] = useState<Failure | null>(null);
+  const [honeypot, setHoneypot] = useState("");
+
+  const submittingRef = useRef(false);
   const noticeRef = useRef<HTMLDivElement>(null);
+  const successRef = useRef<HTMLDivElement>(null);
 
   const fieldId = (name: keyof FormValues) => `${uid}-${name}`;
   const errorCount = Object.keys(errors).length;
+  const isSubmitting = status === "submitting";
 
   function update(name: keyof FormValues, value: string) {
     setValues((previous) => ({ ...previous, [name]: value }));
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function focusField(name: keyof FormValues) {
+    window.requestAnimationFrame(() => {
+      document.getElementById(fieldId(name))?.focus();
+    });
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    // Guards the gap between the click and the re-render that disables the
+    // button, so a double-click cannot send the same enquiry twice.
+    if (submittingRef.current) {
+      return;
+    }
 
     const nextErrors = validate(values);
     setErrors(nextErrors);
     setAttempted(true);
 
     if (Object.keys(nextErrors).length > 0) {
-      setNoticeVisible(false);
-      const firstInvalid = Object.keys(nextErrors)[0] as keyof FormValues;
-      document.getElementById(fieldId(firstInvalid))?.focus();
+      setStatus("idle");
+      setFailure(null);
+      focusField(Object.keys(nextErrors)[0] as keyof FormValues);
       return;
     }
 
-    // Nothing is transmitted: this form has no backend yet, by design.
-    setNoticeVisible(true);
+    submittingRef.current = true;
+    setStatus("submitting");
+    setFailure(null);
+
+    const result = await submitInquiry({
+      name: values.fullName.trim(),
+      email: values.email.trim(),
+      company: emptyToUndefined(values.company),
+      service: values.service,
+      projectDescription: values.projectDescription.trim(),
+      budget: emptyToUndefined(values.budget),
+      timeline: emptyToUndefined(values.timeline),
+      referenceUrl: emptyToUndefined(values.referenceUrl),
+      website: honeypot,
+    });
+
+    submittingRef.current = false;
+
+    if (result.ok) {
+      setStatus("success");
+      setValues(EMPTY_VALUES);
+      setErrors({});
+      setAttempted(false);
+      setHoneypot("");
+      window.requestAnimationFrame(() => successRef.current?.focus());
+      return;
+    }
+
+    if (result.kind === "validation") {
+      const mapped = mapServerFieldErrors(result.fieldErrors);
+
+      if (Object.keys(mapped).length > 0) {
+        setErrors(mapped);
+        setAttempted(true);
+        setStatus("error");
+        setFailure(null);
+        focusField(Object.keys(mapped)[0] as keyof FormValues);
+        return;
+      }
+    }
+
+    // Every other outcome keeps the input intact and explains what happened.
+    setStatus("error");
+    setFailure({ kind: result.kind, message: result.message });
     window.requestAnimationFrame(() => noticeRef.current?.focus());
   }
 
+  if (status === "success") {
+    return (
+      <div
+        ref={successRef}
+        tabIndex={-1}
+        role="status"
+        className="rounded-xl border border-brand-900/15 bg-brand-900/5 p-5 sm:p-6"
+      >
+        <div className="flex items-start gap-3">
+          <CheckCircle2
+            aria-hidden="true"
+            className="mt-0.5 size-5 shrink-0 text-accent-600"
+          />
+          <div>
+            <h2 className="text-base font-semibold text-ink">
+              Thank you — your enquiry has been received
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              It has been saved, and a reply will be sent to the email address
+              you provided.
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-muted">
+              If you need to add anything, email{" "}
+              <a
+                href={`mailto:${SITE.contact.email}`}
+                className="font-medium text-accent-600 underline decoration-accent-500/40 underline-offset-4 transition-colors hover:text-brand-900"
+              >
+                {SITE.contact.email}
+              </a>{" "}
+              or call{" "}
+              <a
+                href={`tel:${SITE.contact.phone}`}
+                className="font-medium text-accent-600 underline decoration-accent-500/40 underline-offset-4 transition-colors hover:text-brand-900"
+              >
+                {SITE.contact.phoneDisplay}
+              </a>
+              .
+            </p>
+            <Button
+              variant="secondary"
+              className="mt-5"
+              onClick={() => setStatus("idle")}
+            >
+              Send another enquiry
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <form noValidate onSubmit={handleSubmit} className="space-y-6">
+    <form
+      noValidate
+      onSubmit={(event) => void handleSubmit(event)}
+      aria-busy={isSubmitting}
+      className="relative space-y-6"
+    >
+      {/*
+        Honeypot. Hidden from sighted and assistive-technology users and removed
+        from the tab order. A bot that fills it gets a normal-looking 201 and
+        nothing is stored. It is a deterrent, not a guarantee.
+      */}
+      <div
+        aria-hidden="true"
+        className="absolute -left-[9999px] top-0 h-px w-px overflow-hidden"
+      >
+        <label htmlFor={`${uid}-website`}>Website</label>
+        <input
+          id={`${uid}-website`}
+          name="website"
+          type="text"
+          tabIndex={-1}
+          autoComplete="off"
+          value={honeypot}
+          onChange={(event) => setHoneypot(event.target.value)}
+        />
+      </div>
+
       {attempted && errorCount > 0 ? (
         <div
+          ref={noticeRef}
+          tabIndex={-1}
           role="alert"
           className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
         >
@@ -170,6 +413,42 @@ export function ContactForm() {
             Please correct the {errorCount === 1 ? "field" : "fields"} marked
             below.
           </p>
+        </div>
+      ) : null}
+
+      {failure ? (
+        <div
+          ref={noticeRef}
+          tabIndex={-1}
+          role="alert"
+          className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+        >
+          <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          <div>
+            <p className="font-semibold">
+              {failure.kind === "timeout"
+                ? "We could not confirm that your enquiry was sent"
+                : "Your enquiry was not sent"}
+            </p>
+            <p className="mt-1">{failure.message}</p>
+            <p className="mt-2">
+              You can also email{" "}
+              <a
+                href={`mailto:${SITE.contact.email}`}
+                className="font-medium underline decoration-red-700/40 underline-offset-4"
+              >
+                {SITE.contact.email}
+              </a>{" "}
+              or call{" "}
+              <a
+                href={`tel:${SITE.contact.phone}`}
+                className="font-medium underline decoration-red-700/40 underline-offset-4"
+              >
+                {SITE.contact.phoneDisplay}
+              </a>
+              .
+            </p>
+          </div>
         </div>
       ) : null}
 
@@ -194,7 +473,7 @@ export function ContactForm() {
           />
         </Field>
 
-        <Field id={fieldId("email")} label="Email" required error={errors.email}>
+        <Field id={fieldId("email")} label="Business email" required error={errors.email}>
           <input
             id={fieldId("email")}
             name="email"
@@ -212,7 +491,7 @@ export function ContactForm() {
         <Field
           id={fieldId("company")}
           label="Company or organisation"
-          hint="Shown on nothing until we reply — it just helps us understand the context."
+          hint="Optional — it just helps us understand the context."
         >
           <input
             id={fieldId("company")}
@@ -226,20 +505,29 @@ export function ContactForm() {
           />
         </Field>
 
-        <Field id={fieldId("service")} label="Service you are interested in">
+        <Field
+          id={fieldId("service")}
+          label="Service you are interested in"
+          required
+          error={errors.service}
+        >
           <select
             id={fieldId("service")}
             name="service"
             value={values.service}
             onChange={(event) => update("service", event.target.value)}
-            className={cn(INPUT_CLASS, "pr-8")}
+            aria-required="true"
+            aria-invalid={errors.service ? true : undefined}
+            aria-describedby={describedBy(fieldId("service"), false, Boolean(errors.service))}
+            className={cn(INPUT_CLASS, "pr-8", errors.service && "border-red-400")}
           >
-            <option value="">Not sure yet</option>
+            <option value="">Select a service</option>
             {services.map((service) => (
               <option key={service.slug} value={service.slug}>
                 {service.title}
               </option>
             ))}
+            <option value="not-sure">Not sure yet</option>
           </select>
         </Field>
       </div>
@@ -310,6 +598,7 @@ export function ContactForm() {
         id={fieldId("referenceUrl")}
         label="Reference or existing site"
         hint="Optional. A link that shows the style or the current setup."
+        error={errors.referenceUrl}
       >
         <input
           id={fieldId("referenceUrl")}
@@ -319,58 +608,31 @@ export function ContactForm() {
           placeholder="https://"
           value={values.referenceUrl}
           onChange={(event) => update("referenceUrl", event.target.value)}
-          aria-describedby={describedBy(fieldId("referenceUrl"), true, false)}
-          className={INPUT_CLASS}
+          aria-invalid={errors.referenceUrl ? true : undefined}
+          aria-describedby={describedBy(
+            fieldId("referenceUrl"),
+            true,
+            Boolean(errors.referenceUrl),
+          )}
+          className={cn(INPUT_CLASS, errors.referenceUrl && "border-red-400")}
         />
       </Field>
 
       <div className="flex flex-col gap-3 border-t border-line pt-6 sm:flex-row sm:items-center sm:gap-4">
-        <Button type="submit" size="lg">
-          Submit enquiry
+        <Button type="submit" size="lg" disabled={isSubmitting}>
+          {isSubmitting ? "Sending…" : "Submit enquiry"}
         </Button>
         <p className="text-xs leading-relaxed text-muted">
-          Not connected yet. Submitting does not send anything — it will show
-          the direct contact details instead.
+          Your details are stored so we can reply. Read the{" "}
+          <Link
+            href="/privacy-policy"
+            className="font-medium text-accent-600 underline decoration-accent-500/40 underline-offset-4 transition-colors hover:text-brand-900"
+          >
+            privacy policy
+          </Link>
+          .
         </p>
       </div>
-
-      {noticeVisible ? (
-        <div
-          ref={noticeRef}
-          tabIndex={-1}
-          role="status"
-          className="rounded-xl border border-brand-900/15 bg-brand-900/5 p-5"
-        >
-          <h2 className="text-base font-semibold text-ink">
-            Nothing was sent — this form is not connected yet
-          </h2>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            Your entries stayed in the browser and were not submitted or stored
-            anywhere. The form will be connected to the backend later. For now,
-            please use one of these:
-          </p>
-          <ul className="mt-4 space-y-2 text-sm">
-            <li>
-              <a
-                href={`mailto:${SITE.contact.email}`}
-                className="inline-flex items-center gap-2 font-medium text-accent-600 transition-colors hover:text-brand-900"
-              >
-                <Mail aria-hidden="true" className="size-4" />
-                <span className="break-all">{SITE.contact.email}</span>
-              </a>
-            </li>
-            <li>
-              <a
-                href={`tel:${SITE.contact.phone}`}
-                className="inline-flex items-center gap-2 font-medium text-accent-600 transition-colors hover:text-brand-900"
-              >
-                <Phone aria-hidden="true" className="size-4" />
-                {SITE.contact.phoneDisplay}
-              </a>
-            </li>
-          </ul>
-        </div>
-      ) : null}
     </form>
   );
 }

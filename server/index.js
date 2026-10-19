@@ -15,7 +15,10 @@ import { createApp } from "./app.js";
  * exits with code 1 rather than serving traffic against a missing database.
  */
 
-const app = createApp({ allowedOrigins: env.frontendUrls });
+const app = createApp({
+  allowedOrigins: env.frontendUrls,
+  trustProxy: env.trustProxy,
+});
 
 // ---------------------------------------------------------------------------
 // Connect before listening. Fail fast and clearly if the database is down.

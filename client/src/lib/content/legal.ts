@@ -8,7 +8,8 @@ import type { LegalSection } from "@/types/type";
  * lawyer familiar with the relevant jurisdiction) before the site goes live.
  *
  * The statements below describe the site as it is actually built today:
- *   - the contact form is not connected to a backend, so it submits nothing;
+ *   - the contact form sends enquiries to the agency's backend, where they are
+ *     stored so they can be answered;
  *   - the site sets no analytics or advertising cookies;
  *   - there are no user accounts on the public site.
  * Update this file before enabling any of those things.
@@ -30,7 +31,8 @@ export const privacySections: LegalSection[] = [
     heading: "2. Information this website collects",
     paragraphs: [
       "The public website is a content site. It does not create user accounts, and it does not ask visitors to sign in.",
-      "The contact form on this website is not connected to a backend in the current version. When you press the submit button, no data is transmitted or stored; the page explains this and offers the direct email address instead.",
+      "The contact form sends the details you enter — your name, business email, company (if given), requested service, project description, and any optional budget, timeline, or reference link — to the agency's backend. The enquiry is stored in the agency's database together with the time it was submitted, so it can be answered and followed up.",
+      "The server sees the network address a submission comes from and uses it only to limit automated abuse of the form. That address is held temporarily by the rate limiter and is not stored with the enquiry.",
       "The hosting provider may record standard technical information — such as an IP address, browser type, requested page, and time of the request — in server logs for security and reliability. [PLACEHOLDER: confirm the hosting provider and the retention period for these logs.]",
     ],
   },
@@ -55,7 +57,7 @@ export const privacySections: LegalSection[] = [
     id: "third-parties",
     heading: "5. Service providers",
     paragraphs: [
-      "The website and email are operated using third-party providers. Those providers process data on instruction and under their own terms. [PLACEHOLDER: list the hosting provider and the email provider, with their locations.]",
+      "The website, database, and email are operated using third-party providers. Those providers process data on instruction and under their own terms. [PLACEHOLDER: list the hosting, database, and email providers, with their locations.]",
       "Information is not shared with other third parties except where required by law or where it is necessary to respond to a request you have made.",
     ],
   },
@@ -86,7 +88,7 @@ export const privacySections: LegalSection[] = [
     id: "changes",
     heading: "9. Changes to this policy",
     paragraphs: [
-      "This policy will be updated when the way the website handles information changes — for example, when the contact form is connected to a backend or analytics are introduced.",
+      "This policy will be updated when the way the website handles information changes — for example, when analytics are introduced or a new service provider is used.",
       "The date at the top of this page shows the most recent revision.",
     ],
   },

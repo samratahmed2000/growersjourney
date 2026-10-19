@@ -396,14 +396,24 @@ server/
 ├── config/
 │   ├── env.js             # reads and validates process.env; the only `dotenv` user
 │   └── database.js        # the only MongoDB connection owner; URI is passed in
+├── constants/
+│   └── inquiry.js         # status/service allowlists + field limits, shared by model and validator
+├── models/
+│   └── inquiry.js         # Mongoose Inquiry model (collection `inquiries`)
 ├── middleware/
 │   ├── request-id.js      # generates `x-request-id`, sets req.id
 │   ├── request-logger.js  # one log line per completed request
 │   ├── validate.js        # Zod validation -> req.validated
+│   ├── rate-limit.js      # express-rate-limit wrapper -> HttpError 429
 │   ├── not-found.js       # terminal JSON 404
 │   └── error-handler.js   # last middleware; maps errors to the response envelope
+├── repositories/
+│   └── inquiry-repository.js # the only writer of inquiries; injectable for tests
+├── validators/
+│   └── inquiry.js         # strict public schema + URL/email normalization
 ├── routes/
-│   └── health.js
+│   ├── health.js
+│   └── inquiries.js       # POST /api/v1/inquiries
 ├── utils/
 │   ├── api-response.js    # sendSuccess / sendError (the standard envelope)
 │   ├── http-error.js      # HttpError + badRequest / notFoundError / payloadTooLarge
@@ -417,14 +427,18 @@ server/
 Actual middleware order in `app.js` — the order is load-bearing:
 
 ```text
-request id -> request logger -> cors -> express.json({ limit: "100kb" })
-           -> /api/v1 routes -> GET / -> not found -> error handler
+app.set("trust proxy") -> request id -> request logger
+  -> cors (origin allowlist + exposed headers) -> express.json({ limit: "100kb" })
+  -> /api/v1 routes (health, then rate-limited inquiries)
+  -> GET / -> not found -> error handler
 ```
 
 Why it is arranged this way:
 
 - `createApp()` deliberately does **not** import `config/env.js`. That module validates configuration and calls `process.exit(1)` when something is missing, which would make the HTTP layer impossible to import in a test. The connection string is passed to `connectDatabase(uri)` by `index.js` instead.
-- `createApp()` accepts `{ allowedOrigins, jsonLimit, logRequests }` so tests can run without a database, on an ephemeral port, with request logging off.
+- `createApp()` accepts `{ allowedOrigins, jsonLimit, logRequests, trustProxy, inquiryRepository, inquiryRateLimit }` so tests can run without a database, on an ephemeral port, with request logging off and a tiny rate limit.
+- `trust proxy` is set before any middleware because the inquiry rate limiter keys on `req.ip`. `TRUST_PROXY` is `false` by default and only accepts a hop count; a permissive `true` would let callers forge `X-Forwarded-For` and reset their own bucket.
+- The inquiry route mounts its own rate limiter, so only that public write endpoint is limited. The limiter's `429` is raised as an `HttpError` and rendered by the shared error handler, keeping one response envelope.
 - The not-found handler and the error handler are registered last; the error handler keeps all four parameters because that is how Express identifies an error handler.
 - `request-id` runs first so every later log line and error log can be correlated by id.
 

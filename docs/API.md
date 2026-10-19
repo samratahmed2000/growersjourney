@@ -197,7 +197,7 @@ Choose a consistent policy for `400` versus `422`; do not use them interchangeab
 | `400`  | `INVALID_JSON`        | The request body is not valid JSON                                       |
 | `404`  | `NOT_FOUND`           | Unmatched route, wrong method on a known path, or a missing resource     |
 | `413`  | `PAYLOAD_TOO_LARGE`   | The request body exceeded the JSON limit                                 |
-| `429`  | `RATE_LIMIT_EXCEEDED` | Reserved for the future rate limiter; not returned yet                   |
+| `429`  | `RATE_LIMIT_EXCEEDED` | Rejected by the public inquiry rate limiter (see 7.6)                    |
 | `500`  | `INTERNAL_ERROR`      | An unexpected server failure; the client only ever sees a generic message |
 | `503`  | `DATABASE_UNAVAILABLE` | The readiness check could not reach MongoDB                             |
 
@@ -319,40 +319,67 @@ Request example:
   "name": "Example Person",
   "email": "person@example.com",
   "company": "Example Company",
-  "service": "Web Application Development",
+  "service": "web-application-development",
   "projectDescription": "I need a responsive business application.",
   "budget": "To be discussed",
   "timeline": "Within three months",
-  "referenceUrl": "https://example.com"
+  "referenceUrl": "example.com"
 }
 ```
 
-Required fields:
+`service` must be one of `web-application-development`, `business-automation`,
+`ai-integration`, or `not-sure` (shown as "Not sure yet" in the form).
 
-- `name`
-- `email`
-- `service`
-- `projectDescription`
+| Field                | Required | Rules                                                                                                                          |
+| -------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `name`               | yes      | 2–100 characters, trimmed                                                                                                      |
+| `email`              | yes      | Valid address, trimmed, lower-cased, ≤254 characters                                                                           |
+| `company`            | no       | ≤120 characters; an empty value is stored as absent                                                                            |
+| `service`            | yes      | One of the four slugs above                                                                                                    |
+| `projectDescription` | yes      | 20–5000 characters, trimmed                                                                                                    |
+| `budget`             | no       | ≤100 characters                                                                                                                |
+| `timeline`           | no       | ≤100 characters                                                                                                                |
+| `referenceUrl`       | no       | ≤2048 characters; `http`/`https` only; a missing scheme becomes `https://`; embedded credentials are rejected                   |
+| `website`            | no       | Honeypot. Declared so the strict schema does not reject a bot that fills it; a non-empty value still returns `201` and is discarded |
 
-Optional fields:
+Unknown fields are **rejected** with `400`, not silently ignored. That includes
+`status`, `notes`, `assignedTo`, `convertedClientId`, `_id`, and timestamps. The
+initial status is always set to `NEW` on the server.
 
-- `company`
-- `budget`
-- `timeline`
-- `referenceUrl`
+Success — `201 Created`:
 
-Expected response: `201 Created`.
+```json
+{
+  "success": true,
+  "data": { "message": "Thank you — your enquiry has been received." }
+}
+```
 
-Rules:
+No id, email address, description, or status is returned.
 
-- Validate and normalize input on the server.
-- Limit field lengths and payload size.
-- Validate URLs and permitted protocols.
-- Apply rate limiting and appropriate spam protection.
-- Set the initial status server-side to `NEW`.
-- Never allow public callers to assign an inquiry, change its status, or add internal notes.
-- Save the inquiry before attempting nonessential email notifications.
-- Return a generic success message without exposing internal records or staff information.
+Errors:
+
+| Status | Code                  | Cause                                                                                                                  |
+| ------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `400`  | `VALIDATION_ERROR`    | A field is missing, invalid, over-length, or unsupported. `details` is `[{ field, message }]`, e.g. `field: "body.email"` |
+| `400`  | `INVALID_JSON`        | The request body is not valid JSON                                                                                     |
+| `413`  | `PAYLOAD_TOO_LARGE`   | The body exceeds the `100kb` JSON limit                                                                                |
+| `429`  | `RATE_LIMIT_EXCEEDED` | More than 5 submissions from one IP in 15 minutes; `Retry-After` is set                                                 |
+| `500`  | `INTERNAL_ERROR`      | The database write (or another unexpected step) failed. The response is generic; details are logged server-side only    |
+
+Rate limiting and abuse protection (implemented in Task 05):
+
+- 5 requests per 15 minutes per client IP. Accepted and rejected submissions
+  both count.
+- `RateLimit`, `RateLimit-Policy`, and `Retry-After` are returned and are exposed
+  through CORS so the browser form can read the retry delay.
+- A hidden honeypot field plus rate limiting. No CAPTCHA. A determined bot can
+  bypass a honeypot, so this is a deterrent — not authentication.
+- Request bodies and submitted values are never logged.
+- `TRUST_PROXY` must match the deployment: `false` when the API is reached
+  directly, or a hop count when a known proxy forwards requests. A permissive
+  `true` is rejected by configuration validation, because it would let any
+  caller forge `X-Forwarded-For` and reset its own rate-limit bucket.
 
 ---
 

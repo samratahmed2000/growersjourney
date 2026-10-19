@@ -94,6 +94,37 @@ if (frontendUrls.length === 0) {
   problems.push("FRONTEND_URL must contain at least one frontend origin.");
 }
 
+// ---------------------------------------------------------------------------
+// TRUST_PROXY — optional. `false` by default.
+//
+// Express needs to know how many reverse-proxy hops sit in front of it before
+// it can read the real client IP from X-Forwarded-For. That IP is what the
+// public rate limiter counts, so getting this wrong matters:
+//   - `false` (default): the socket address is used. Correct when the API is
+//     reached directly, or in local development.
+//   - a number 1-10: trust that many hops. Correct behind one known proxy or
+//     load balancer (for example a single platform edge).
+// A permissive `true` is deliberately NOT accepted: it would trust a header any
+// caller can forge, letting a bot reset its own rate-limit bucket at will.
+// ---------------------------------------------------------------------------
+const rawTrustProxy = (process.env.TRUST_PROXY ?? "").trim();
+let trustProxy = false;
+
+if (rawTrustProxy && rawTrustProxy.toLowerCase() !== "false") {
+  if (!/^\d+$/.test(rawTrustProxy)) {
+    problems.push(
+      "TRUST_PROXY must be false or a hop count between 1 and 10 (for example TRUST_PROXY=1).",
+    );
+  } else {
+    const hops = Number.parseInt(rawTrustProxy, 10);
+    if (hops > 10) {
+      problems.push("TRUST_PROXY must be false or a hop count between 1 and 10.");
+    } else if (hops > 0) {
+      trustProxy = hops;
+    }
+  }
+}
+
 const nodeEnv = process.env.NODE_ENV || "development";
 
 if (problems.length > 0) {
@@ -106,6 +137,7 @@ export const env = Object.freeze({
   isProduction: nodeEnv === "production",
   port,
   frontendUrls,
+  trustProxy,
   mongodbUri,
   databaseName,
 });

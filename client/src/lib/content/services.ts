@@ -9,6 +9,10 @@ import type { Service } from "@/types/type";
  * Copy rules: describe what the service covers and how it is delivered. No
  * prices, timelines, client counts, or outcome percentages — none of those
  * have been verified.
+ *
+ * The slugs are also the allowlist for the public inquiry API
+ * (`server/constants/inquiry.js`). Adding or renaming a service means updating
+ * both files, or the form will send a value the server rejects.
  */
 export const services: Service[] = [
   {
