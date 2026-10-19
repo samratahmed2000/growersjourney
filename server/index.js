@@ -1,49 +1,83 @@
 import express from "express";
 import cors from "cors";
-import { MongoClient } from "mongodb";
-import "dotenv/config";
+import { env } from "./config/env.js";
+import { connectDatabase, disconnectDatabase } from "./config/database.js";
 import healthRouter from "./routes/health.js";
 
+/**
+ * Express bootstrap.
+ *
+ * Startup order matters: configuration is validated on import, then the
+ * database is connected, and only after that does the server start accepting
+ * requests. If MongoDB cannot be reached, the process exits with code 1 rather
+ * than serving traffic against a missing database.
+ */
+
 const app = express();
-const port = process.env.PORT || 5000;
 
-// Restrict CORS to the configured frontend origin(s) instead of allowing every
-// origin. FRONTEND_URL may be a single origin or a comma-separated list.
-// Note: credentials are not enabled yet, and a wildcard origin must never be
-// combined with credentials once they are.
-const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-app.use(cors({ origin: allowedOrigins }));
+// CORS is restricted to the configured frontend origin(s). Credentials are not
+// enabled yet, and a wildcard origin must never be combined with credentials.
+app.use(cors({ origin: env.frontendUrls }));
 app.use(express.json());
 
-const client = new MongoClient(
-  `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.4gvfom0.mongodb.net/`,
-);
-
-export async function connectToMongoDB() {
-  try {
-    await client.connect();
-    // Log a plain confirmation only. Never log `client` itself: its options
-    // contain the connection details and credentials.
-    console.log("MongoDB connected");
-  } catch (err) {
-    console.dir(err);
-  }
-}
-
-await connectToMongoDB();
-
-// Versioned API routes. Health check lives in ./routes/health.js.
+// Versioned API routes. Health checks live in ./routes/health.js.
 app.use("/api/v1", healthRouter);
 
 app.get("/", (req, res) => {
   res.send("Server is running");
 });
 
-app.listen(port, () => {
-  console.log(`server is running at ${port}`);
+// ---------------------------------------------------------------------------
+// Connect before listening. Fail fast and clearly if the database is down.
+// ---------------------------------------------------------------------------
+try {
+  await connectDatabase();
+  console.log("[db] MongoDB connected.");
+} catch (error) {
+  // Only the error type is reported; driver errors can echo connection details.
+  console.error(
+    `[db] Could not connect to MongoDB (${error?.name ?? "Error"}). ` +
+      "Check MONGODB_URI in server/.env and your MongoDB Atlas network access list. " +
+      "Connection details are intentionally not logged.",
+  );
+  process.exit(1);
+}
+
+const server = app.listen(env.port, () => {
+  console.log(`server is running at ${env.port}`);
 });
 
+// ---------------------------------------------------------------------------
+// Graceful shutdown: stop accepting requests, close the database, then exit.
+// ---------------------------------------------------------------------------
+let isShuttingDown = false;
+
+async function shutdown(signal) {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+
+  console.log(`\n[server] ${signal} received. Shutting down gracefully...`);
+
+  // Never hang forever if a client keeps a connection open.
+  const watchdog = setTimeout(() => {
+    console.error("[server] Shutdown timed out. Forcing exit.");
+    process.exit(1);
+  }, 10000);
+  watchdog.unref();
+
+  server.close(async () => {
+    try {
+      await disconnectDatabase();
+      console.log("[db] MongoDB connection closed.");
+    } catch {
+      console.error("[db] Could not close the MongoDB connection cleanly.");
+    }
+    clearTimeout(watchdog);
+    process.exit(0);
+  });
+}
+
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));

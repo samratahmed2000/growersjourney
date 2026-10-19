@@ -162,6 +162,13 @@ Run the backend using its configured development script and confirm that:
 - Connection errors are reported clearly.
 - Sensitive connection details are not printed in logs.
 
+The current backend loads `MONGODB_URI` from the server environment and validates it at startup. A missing or malformed value stops the process immediately with a message that names the variable only — never its value.
+
+Two checks are available:
+
+- `node scripts/check-db.js` — a standalone connectivity check that prints the database name and ping result, then exits `0` or `1`. This is the quickest way to isolate a database problem.
+- `GET /api/v1/health/ready` — readiness for a running server. It returns `200` when the database answers a ping and `503 DATABASE_UNAVAILABLE` when it does not. `GET /api/v1/health` (liveness) deliberately stays `200` during a database outage and does not check the database.
+
 Do not continue with database-dependent features until connectivity is verified.
 
 ## 8. Environment Variables

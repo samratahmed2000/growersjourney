@@ -726,23 +726,25 @@ Do not delete a client, project, invoice, or payment blindly when related record
 
 Keep database configuration in the backend.
 
-Example:
+The connection string is read from the server-only `MONGODB_URI` variable, which must include the database name. The implemented shape is:
 
-```ts
+```js
+// server/config/database.js
 import mongoose from "mongoose";
+import { env } from "./env.js";
 
-export async function connectDatabase(): Promise<void> {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (!databaseUrl) {
-    throw new Error("DATABASE_URL is not configured");
-  }
-
-  await mongoose.connect(databaseUrl);
+export async function connectDatabase() {
+  await mongoose.connect(env.mongodbUri, {
+    serverSelectionTimeoutMS: 5000,
+    connectTimeoutMS: 10000,
+  });
+  return mongoose.connection;
 }
 ```
 
-This is a minimal illustrative example. Production startup should also handle connection failures, process shutdown, logging, and health checks appropriately.
+Configuration is validated before this runs (`server/config/env.js`), and `server/index.js` connects before it starts listening for requests.
+
+This is a minimal illustrative example of the real code. Production startup must also handle connection failures, process shutdown, logging, and health checks appropriately.
 
 Rules:
 

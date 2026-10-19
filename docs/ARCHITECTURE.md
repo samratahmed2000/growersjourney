@@ -881,10 +881,10 @@ Only variables explicitly intended for browser exposure may use the `NEXT_PUBLIC
 
 ```env
 NODE_ENV=development
-PORT=4000
+PORT=5000
 
 FRONTEND_URL=http://localhost:3000
-DATABASE_URL=
+MONGODB_URI=mongodb+srv://USER:PASSWORD@cluster0.xxxxx.mongodb.net/growers_journy?retryWrites=true&w=majority
 
 BETTER_AUTH_SECRET=
 BETTER_AUTH_URL=

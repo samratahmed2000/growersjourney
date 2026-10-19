@@ -209,6 +209,8 @@ Do not expose credentials, connection strings, detailed internal configuration, 
 
 A separate internal readiness check may verify database availability.
 
+**Implemented readiness check:** `GET /api/v1/health/ready` reports database availability only. It returns `200` with `{ "success": true, "data": { "status": "ready", "database": "connected" } }` when the database answers a ping, and `503` with code `DATABASE_UNAVAILABLE` when it does not. It exposes no hostnames, connection strings, credentials, driver versions, or error details. `GET /health` remains a liveness check that does not touch the database.
+
 ### 7.2 List Services
 
 | Property | Value       |
