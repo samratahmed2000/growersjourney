@@ -1,7 +1,10 @@
+import { getAuthTables } from "@better-auth/core/db";
+import { admin } from "better-auth/plugins";
 import { env } from "../config/env.js";
 import {
   connectDatabase,
   disconnectDatabase,
+  getMongoDatabase,
 } from "../config/database.js";
 import { AuditEvent } from "../models/audit-event.js";
 import { Client } from "../models/client.js";
@@ -31,8 +34,8 @@ import { Service } from "../models/service.js";
  * webhook idempotency depends on MongoDB rejecting a duplicate event. Run this
  * script once after a fresh deployment, or whenever a model index changes.
  *
- * It prints model names only. It never prints the connection string, database
- * credentials, or document contents.
+ * It prints model/collection and field names only. It never prints the
+ * connection string, database credentials, or document contents.
  */
 const MODELS = [
   ["AuditEvent", AuditEvent],
@@ -58,8 +61,45 @@ try {
 
   for (const [name, model] of MODELS) {
     const created = await model.createIndexes();
-    console.log(`[indexes] ${name}: ${created.length} index definition(s) ensured.`);
+    // Mongoose 9 resolves createIndexes() without the legacy index array.
+    // Fall back to the declared schema indexes so the message stays accurate.
+    const ensured = Array.isArray(created)
+      ? created.length
+      : model.schema.indexes().length;
+    console.log(`[indexes] ${name}: ${ensured} index definition(s) ensured.`);
   }
+
+  // Better Auth's MongoDB adapter creates collections on write, but its
+  // field-level unique/index metadata is not included in its lazy index setup
+  // in better-auth@1.7.11. Ensure those indexes explicitly, using the same
+  // field metadata the adapter uses. This is additive and creates no documents.
+  const db = getMongoDatabase();
+  if (!db) {
+    throw new Error("MongoDB connection is not ready");
+  }
+
+  const authTables = getAuthTables({ plugins: [admin()] });
+  let authIndexCount = 0;
+
+  for (const table of Object.values(authTables)) {
+    for (const [fieldName, field] of Object.entries(table.fields)) {
+      if (!field.unique && !field.index) continue;
+
+      const column = field.fieldName || fieldName;
+      const unique = Boolean(field.unique);
+      const name = `${table.modelName}_${column}_${unique ? "uidx" : "idx"}`;
+
+      await db.collection(table.modelName).createIndex(
+        { [column]: 1 },
+        { name, ...(unique ? { unique: true } : {}) },
+      );
+      authIndexCount += 1;
+    }
+  }
+
+  console.log(
+    `[indexes] Better Auth: ${authIndexCount} field index definition(s) ensured.`,
+  );
 
   console.log("[indexes] Index creation completed.");
 } catch (error) {
