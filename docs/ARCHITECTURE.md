@@ -1069,6 +1069,15 @@ Deployment rules:
 - Test authentication and payment webhooks in staging before production.
 - Maintain a documented backup and recovery strategy.
 
+**Current implementation note:** the deployed topology is still unverified. The
+actual operational runbook, environment matrix, health checks, backup/recovery,
+release checklist, and rollback plan are in `docs/Deployment.md` and
+`docs/Release-Checklist.md`. The frontend is `client/` (Next.js) and the backend
+is `server/` (Express, plain JavaScript ESM). Only the `FAKE` payment sandbox is
+implemented, so payments must stay disabled in production until a real provider
+is approved. A full nonce-based CSP and a shared rate-limit store are not
+implemented.
+
 ---
 
 ## 18. Testing Architecture

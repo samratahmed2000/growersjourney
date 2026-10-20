@@ -80,6 +80,16 @@ test("invoice and payment indexes protect identifiers and event delivery", () =>
   assert.ok(providerRefundIndex);
   assert.equal(providerRefundIndex[1].unique, true);
   assert.equal(providerRefundIndex[1].sparse, true);
+
+  const paymentIndexes = Payment.schema.indexes();
+  const activeIndex = paymentIndexes.find(
+    ([fields, options]) => fields.invoiceId === 1 && options.unique === true,
+  );
+  assert.ok(activeIndex);
+  assert.equal(activeIndex[1].unique, true);
+  assert.deepEqual(activeIndex[1].partialFilterExpression, {
+    status: { $in: ["INITIATED", "PENDING"] },
+  });
 });
 
 test("payment model rejects unsafe amounts and unknown providers", async () => {

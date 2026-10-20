@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,9 +21,11 @@ export function PayInvoiceButton({
   const [amount, setAmount] = useState(minorToMajor(balanceMinor));
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const submittingRef = useRef(false);
 
   async function pay(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingRef.current) return;
     setMessage(null);
     const amountMinor = majorToMinor(amount);
     if (!Number.isInteger(amountMinor) || amountMinor < 1) {
@@ -35,30 +37,41 @@ export function PayInvoiceButton({
       return;
     }
 
+    submittingRef.current = true;
     setPending(true);
-    const result = await portalMutate<{
-      payment: PaymentSummary;
-      checkoutUrl: string | null;
-      alreadyPaid?: boolean;
-    }>(`/invoices/${invoiceId}/payment-session`, "POST", { amountMinor });
-    setPending(false);
+    try {
+      const result = await portalMutate<{
+        payment: PaymentSummary;
+        checkoutUrl: string | null;
+        alreadyPaid?: boolean;
+      }>(`/invoices/${invoiceId}/payment-session`, "POST", {
+        amountMinor,
+        // A fresh key per deliberate submit. The server also reuses any active
+        // attempt for this invoice, so a double-click or a lost response cannot
+        // create a second chargeable checkout.
+        idempotencyKey: globalThis.crypto.randomUUID(),
+      });
 
-    if (!result.ok) {
-      setMessage(result.message);
-      return;
+      if (!result.ok) {
+        setMessage(result.message);
+        return;
+      }
+
+      if (result.data.checkoutUrl) {
+        window.location.assign(result.data.checkoutUrl);
+        return;
+      }
+
+      if (result.data.alreadyPaid) {
+        router.refresh();
+        return;
+      }
+
+      setMessage("The payment session did not return a checkout link.");
+    } finally {
+      submittingRef.current = false;
+      setPending(false);
     }
-
-    if (result.data.checkoutUrl) {
-      window.location.assign(result.data.checkoutUrl);
-      return;
-    }
-
-    if (result.data.alreadyPaid) {
-      router.refresh();
-      return;
-    }
-
-    setMessage("The payment session did not return a checkout link.");
   }
 
   return (

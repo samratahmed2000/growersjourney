@@ -270,6 +270,18 @@ export function createFakeFinance({ repositories, data }) {
     async findByIdempotencyKey(key) {
       return rawPayment(payments.find((item) => item.idempotencyKey === key));
     },
+    async findActiveForInvoice({ invoiceId, clientId }) {
+      return rawPayment(
+        [...payments]
+          .reverse()
+          .find(
+            (item) =>
+              matches(item.invoiceId, invoiceId) &&
+              matches(item.clientId, clientId) &&
+              ["INITIATED", "PENDING"].includes(item.status),
+          ),
+      );
+    },
     async create(input) {
       const now = new Date();
       const payment = { _id: newId(), ...clone(input), createdAt: now, updatedAt: now };

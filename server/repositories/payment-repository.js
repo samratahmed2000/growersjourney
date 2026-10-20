@@ -71,6 +71,28 @@ export async function findByIdempotencyKey(key) {
   return Payment.findOne({ idempotencyKey: key }).lean();
 }
 
+/**
+ * Find the payment attempt that is currently open for an invoice.
+ *
+ * A client can double-submit, open two tabs, or retry after a lost response.
+ * The service checks this before creating a new attempt so only one checkout is
+ * active at a time. This is the application-level companion to the sparse
+ * unique index on `idempotencyKey`.
+ */
+export async function findActiveForInvoice({
+  invoiceId,
+  clientId,
+  session = null,
+}) {
+  const query = Payment.findOne({
+    invoiceId,
+    clientId,
+    status: { $in: ["INITIATED", "PENDING"] },
+  }).sort({ createdAt: -1 });
+  if (session) query.session(session);
+  return query.lean();
+}
+
 export async function createPayment(data) {
   return Payment.create(data);
 }
@@ -191,6 +213,7 @@ export const paymentRepository = Object.freeze({
   findDocumentById: findPaymentDocumentById,
   findForClient: findPaymentForClient,
   findByIdempotencyKey,
+  findActiveForInvoice,
   create: createPayment,
   markSucceeded,
   markAttemptTerminal,

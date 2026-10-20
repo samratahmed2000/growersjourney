@@ -7,6 +7,8 @@ export const metadata: Metadata = {
   description:
     "The terms that apply to this website, including how portfolio sample content should be read. Draft template pending legal review.",
   alternates: { canonical: "/terms" },
+  // Draft legal copy must not be indexed until the owner approves it.
+  robots: { index: false, follow: true },
 };
 
 export default function TermsPage() {

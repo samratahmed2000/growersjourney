@@ -235,10 +235,18 @@ Task 09 test files:
 | File | Coverage |
 | --- | --- |
 | `finance-unit.test.js` | Integer minor-unit line and invoice totals, disabled tax/discount rejection, exact balances/formatting, derived `ISSUED`/`PARTIALLY_PAID`/`PAID`/`OVERDUE`, grace-day cutoff and overdue list boundary |
-| `finance-models.test.js` | Invoice defaults/date order/safe-integer/refund rules and unique sparse number, payment safe integers/provider enum/refund bound, event and refund unique indexes, portal serialization excludes internal notes |
+| `finance-models.test.js` | Invoice defaults/date order/safe-integer/refund rules and unique sparse number, payment safe integers/provider enum/refund bound, event and refund unique indexes, partial unique active-payment index, portal serialization excludes internal notes |
 | `invoice-payment-api.test.js` | Admin invoice create/issue/detail/void authorization, server-calculated totals, draft concealment, portal payment-session ownership, overpay rejection, partial payment, refunds, void-with-payments conflict, cross-client `404`, invalid/mismatched webhook signatures and amounts, duplicate and concurrent webhook delivery crediting once |
 
-Current result: **149/149 server tests pass** (`npm test` from `server/`). This includes the 70 tests from Tasks 03–05, 30 Task 06 tests, 19 Task 07 tests, 15 Task 08 tests, and 15 Task 09 tests.
+Task 10 test files:
+
+| File | Coverage |
+| --- | --- |
+| `security-headers.test.js` | nosniff, frame denial, referrer policy, permissions policy, HSTS opt-in, no `X-Powered-By` |
+| `env-validation.test.js` | missing required variables exit 1 and print names only; FAKE rejected in production; enabling payments without an explicit `NODE_ENV` is rejected |
+| `invoice-payment-api.test.js` (extended) | idempotent payment-session retries, active-attempt reuse across keys, conflicting amount rejection, required `idempotencyKey` |
+
+Current result: **155/155 server tests pass** (`npm test` from `server/`). This includes the earlier Task 03–09 suites plus the Task 10 security/env/idempotency tests.
 
 What is **not** automated:
 
@@ -547,12 +555,20 @@ If frontend and backend use separate package configurations, execute the relevan
 
 ```bash
 cd client && npm run lint        # passes
-cd client && npm run typecheck   # fails while route files are still empty placeholders
-cd client && npm run build       # fails for the same reason
-cd server && npm test            # node --test; passes (no database required)
+cd client && npm run typecheck   # passes
+cd client && npm run build       # passes (48 route entries)
+cd server && npm test            # node --test; 155/155 pass; no database required
+cd server && npm audit --omit=dev --audit-level=high
+cd client && npm audit --omit=dev --audit-level=high
 ```
 
-`server/` has no linter configured. State honestly which commands were run, and report failures with the real reason rather than describing them as passing.
+`server/` has no linter configured. The client has no unit/component/E2E test
+runner, so do not claim those checks passed. A dev-only client advisory in the
+`eslint-config-next` toolchain was observed; assess production impact separately
+from the production dependency audit.
+
+State honestly which commands were run, and report failures with the real reason
+rather than describing them as passing.
 
 Do not hide failing checks, skip required validations without explanation, or report commands as passed if they were not executed.
 

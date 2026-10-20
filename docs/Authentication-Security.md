@@ -8,9 +8,9 @@ The application must protect agency operations, client information, project reco
 
 **Project:** Growers Journy  
 **Frontend:** Next.js App Router, React, TypeScript  
-**Backend:** Node.js, Express.js, TypeScript  
+**Backend:** Node.js, Express.js, **plain JavaScript ESM** (no TypeScript on the server)
 **Database:** MongoDB Atlas with Mongoose  
-**Authentication:** Better Auth, subject to compatibility verification
+**Authentication:** Better Auth 1.7.11 with the official MongoDB adapter
 
 Security must be implemented from the beginning, not added only before deployment.
 
@@ -120,6 +120,18 @@ Public routes (`/api/v1/health`, `/api/v1/health/ready`, `POST /api/v1/inquiries
 - Production `Secure`/`__Secure-` cookie behavior was verified by inspecting the `Set-Cookie` header from a config with `useSecureCookies: true`; it was not verified in a real HTTPS deployment.
 - Real MongoDB persistence and `create-admin` against Atlas remain unverified in this environment because no `MONGODB_URI` is configured locally.
 - Browser interaction, screen-reader output, and visual regression were not automated; there is no client test runner or browser automation installed.
+
+### Task 10 hardening added
+
+- **Explicit environment mode:** `NODE_ENV` must be one of `development`, `test`, or `production`. When payments are enabled it must be set explicitly; `PAYMENT_PROVIDER=FAKE` is rejected in production. This prevents a development payment sandbox from silently running in a production-shaped deployment.
+- **Baseline security headers:** the Next.js site sends `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, a restrictive `Permissions-Policy`, `Cross-Origin-Opener-Policy: same-origin`, a minimal CSP (`frame-ancestors 'none'; base-uri 'self'; form-action 'self'`), and HSTS on HTTPS. Every API response also sends nosniff, frame denial, referrer policy, and permissions policy; the API adds HSTS when `NODE_ENV=production`.
+- **Payment-session idempotency:** `idempotencyKey` is required for a portal payment session. A retry with the same key returns the existing attempt. A second request with a different key reuses the active attempt when the amount matches; a different amount returns `409 PAYMENT_ALREADY_PENDING`. The browser also guards against a double submit. This reduces the risk of two active checkouts and an accidental double charge.
+- **Development diagnostic gating:** `/dev/health` is rewritten to a real 404 in production by `src/proxy.ts`, so the internal API address is not exposed.
+- **Draft legal pages are `noindex`:** `/privacy-policy` and `/terms` remain visible but are kept out of search indexes until the owner/legal review is complete.
+- **Index creation script:** `npm run db:indexes` creates missing model indexes additively. It never drops indexes or data. The unique `(provider, eventId)` and payment `idempotencyKey` indexes are required for the controls above.
+- **Server tests:** 155 tests pass, including security headers, environment validation, cross-client isolation, webhook duplicate handling, and payment-session idempotency.
+
+**Still not implemented:** full nonce-based CSP, shared/distributed rate limiting, APM/metrics/alerting, real payment provider, email delivery, client invitations, browser/accessibility automation, and a verified Atlas smoke test.
 
 ## 5. Session Security
 

@@ -549,6 +549,43 @@ export function createPaymentService({
         }
       }
 
+      // A second request with a different idempotency key (a double-click that
+      // raced past the browser guard, or two open tabs) must not create a
+      // second chargeable checkout for the same invoice. Reuse the active
+      // attempt when the amount matches; reject a conflicting amount instead of
+      // silently changing what the client is paying.
+      const active = await paymentRepository.findActiveForInvoice({
+        invoiceId: invoice._id ?? invoice.id,
+        clientId,
+      });
+      if (active) {
+        if (Number(active.amountMinor) !== requestedAmount) {
+          throw new HttpError(
+            409,
+            "PAYMENT_ALREADY_PENDING",
+            "A payment attempt for this invoice is already in progress. Complete it or contact Growers Journy before starting a different amount.",
+          );
+        }
+
+        try {
+          const checkout = await checkoutForPayment({
+            payment: active,
+            invoice,
+          });
+          return {
+            payment: serializePortalPayment(active),
+            checkoutUrl: checkout.checkoutUrl,
+            existing: true,
+          };
+        } catch {
+          throw new HttpError(
+            502,
+            "PAYMENT_PROVIDER_UNAVAILABLE",
+            "The payment provider is temporarily unavailable. Please try again.",
+          );
+        }
+      }
+
       const providerTransactionId = `GJ-${crypto.randomUUID().replace(/-/g, "").slice(0, 20).toUpperCase()}`;
 
       let created;

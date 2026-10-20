@@ -2,367 +2,234 @@
 
 **Build Smarter. Grow Faster.**
 
-Growers Journy is a technology agency focused on Web Application Development, Business Automation, and AI Integration. This project aims to build a premium agency website and a secure management platform for handling leads, clients, projects, invoices, and business workflows.
+Growers Journy is a technology agency focused on Web Application Development,
+Business Automation, and AI Integration. This repository contains the public
+agency website, an admin dashboard, a client portal, and the Express API behind
+them.
 
-> **Project status:** In Development  
-> **Founder:** Samrat Ahmed  
-> **Professional role:** AI-Driven Web Application Engineer (MERN)
+> **Project status:** In development — Task 10 production-readiness work is in
+> progress. The application is **not** fully production-ready; see
+> `docs/Release-Checklist.md` for unresolved blockers.
+>
+> **Founder:** Samrat Ahmed
 
----
+## 1. What is implemented
 
-## 1. Project Overview
+### Public website (`client/`)
 
-Growers Journy will provide a professional digital presence for the agency and a private platform for managing its operations.
+- `/`, `/services`, `/work`, `/work/[slug]`, `/about`, `/process`, `/contact`,
+  `/privacy-policy`, `/terms`
+- Branded `not-found`, `error`, and `loading` states
+- `robots.ts`, `sitemap.ts`, and a proxy that returns real 404s for unknown
+  project slugs
+- Contact form backed by the Express API (server-side validation, rate limiting,
+  and MongoDB storage)
+- Portfolio content is **three concepts** labelled “Concept” / “Sample concept”.
+  There are no client names, testimonials, logos, metrics, or invented outcomes.
 
-The application includes three main areas:
+### Admin dashboard (`/admin`, `ADMIN` only)
 
-1. **Public Website** — services, portfolio, agency information, and contact forms.
-2. **Admin Dashboard** — lead management, client records, projects, portfolio content, and invoicing.
-3. **Client Portal** — authorized project updates, milestones, invoices, and relevant documents.
+- Overview, inquiries, clients, projects, services, and portfolio management
+- Project milestones, client-visible updates, and explicit portal-account linking
+- Invoices, payments, refunds, reconciliation, and print layouts
+- Strict server-side validation and archive/restore instead of hard delete
 
-The implementation must remain beginner-friendly to develop while following professional architecture and production-oriented security practices.
+### Client portal (`/portal`, `CLIENT` only)
 
-## 2. Core Services
+- Dashboard, projects, milestones, client-visible updates
+- Invoices, payment history, and a sandbox checkout result page
+- Every query is scoped to the active `Client` linked to the signed-in user
 
-- **Web Application Development:** Modern, responsive, full-stack web applications.
-- **Business Automation:** Digital workflows and repetitive-task automation.
-- **AI Integration:** Practical AI-powered features and integrations for business applications.
+### Backend (`server/`)
 
-## 3. Key Features
+- Express 5, plain JavaScript ESM, Mongoose 9, Zod 4
+- Better Auth 1.7.11 with the official MongoDB adapter
+- Health endpoints, consistent JSON envelopes, request ids, redacted logs,
+  security headers, and a 404/error handler
+- Finance services with server-calculated totals, an append-only payment ledger,
+  signed webhooks, and duplicate-event handling
+- A provider-independent `FAKE` sandbox checkout. **No real payment provider is
+  implemented.**
 
-### Public Website
-
-- Premium, responsive, mobile-first interface.
-- Service listings and service details.
-- Dynamic portfolio and project case studies.
-- About, development process, contact, FAQ, and legal pages.
-- Inquiry form with server-side validation.
-- Search-engine optimization and accessible UI.
-- Genuine testimonials and verified project information only.
-
-### Admin Dashboard
-
-- Overview of agency activity.
-- Lead and inquiry management.
-- Client and project management.
-- Milestones, updates, and task-related workflows.
-- Dynamic services and portfolio management.
-- Invoice creation and payment-status tracking.
-- Role-based access for authorized administrators and team members.
-- Audit logs for important administrative actions.
-
-### Client Portal
-
-- Secure client sign-in.
-- Access restricted to the authenticated client's own authorized records.
-- Project progress and milestone visibility.
-- Project updates and relevant documents.
-- Invoice and payment-status access.
-- Notifications where implemented.
-
-### Automation and AI
-
-- Email notifications for relevant events.
-- AI integration foundation for selected business workflows.
-- Controlled MCP integrations when a real use case requires them.
-- Usage tracking, error handling, and configurable provider integrations.
-
-## 4. Technology Stack
-
-| Area                 | Technology                                                             |
-| -------------------- | ---------------------------------------------------------------------- |
-| Frontend             | Next.js App Router, React, TypeScript                                  |
-| Styling              | Tailwind CSS                                                           |
-| UI components        | shadcn/ui, Lucide                                                      |
-| Backend API          | Node.js, Express.js, TypeScript                                        |
-| Database             | MongoDB Atlas                                                          |
-| Database modeling    | Mongoose                                                               |
-| Authentication       | Better Auth, subject to adapter and backend compatibility verification |
-| API validation       | Zod or an equivalent validated schema approach                         |
-| Frontend deployment  | Vercel or a compatible host                                            |
-| Backend deployment   | A Node.js-compatible hosting platform                                  |
-| Development workflow | VS Code and OpenCode                                                   |
-
-Use the existing project configuration and lockfile as the source of truth. Do not install duplicate frameworks or replace working dependencies without a clear reason.
-
-## 5. Architecture Overview
-
-The application is planned as a frontend and backend API monorepo.
+## 2. Repository layout
 
 ```text
 growers-journy/
-├── frontend/          # Next.js public website and private dashboards
-├── backend/           # Express REST API
-├── docs/              # Additional project documentation, if adopted
-├── .gitignore
-├── README.md
-└── AGENTS.md
+├── client/                 # Next.js 16 App Router, React 19, TypeScript, Tailwind v4
+│   └── src/
+│       ├── app/            # (public), (auth), admin/, portal/
+│       ├── components/     # ui, layout, marketing, admin, portal, auth, shared
+│       └── lib/            # content, api, auth, admin helpers
+├── server/                 # Express 5, plain JavaScript ESM, Mongoose 9
+│   ├── auth/               # Better Auth setup, roles, access control
+│   ├── models/             # Mongoose models
+│   ├── repositories/       # data access
+│   ├── routes/             # public, admin, portal, webhooks, mock payments
+│   ├── services/           # invoice and payment business logic
+│   ├── tests/              # node:test suites
+│   └── scripts/            # check-db, create-admin, sync-indexes
+├── docs/                   # product, architecture, API, security, deployment
+├── AGENTS.md
+└── README.md
 ```
 
-The actual directory structure must be checked against the repository before implementation. Existing files should be preserved unless a deliberate change is approved.
+There is **no root `package.json` and no workspace**. Install and run commands
+inside `client/` or `server/`.
 
-### Request flow
+## 3. Technology actually installed
 
-```text
-Browser
-   |
-   v
-Next.js Frontend
-   |
-   v
-Express REST API
-   |
-   v
-Validation + Authentication + Authorization
-   |
-   v
-Business Services
-   |
-   v
-MongoDB Atlas
-```
+| Area | Installed today |
+| --- | --- |
+| Frontend | Next.js 16.4.2, React 19.3, TypeScript (strict), Tailwind CSS v4 |
+| Icons | `lucide-react` |
+| Backend | Node.js, Express 5, plain JavaScript ESM |
+| Database | MongoDB Atlas, Mongoose 9 |
+| Validation | Zod 4 |
+| Authentication | Better Auth 1.7.11 + `@better-auth/mongo-adapter` 1.7.11 |
+| Backend tests | Node's built-in `node --test` (no Jest/Vitest/Supertest) |
+| Frontend tests | None configured |
+| Payments | Local `FAKE` sandbox adapter only |
 
-External services such as email, payment providers, and AI providers must be integrated through controlled server-side modules. Secret credentials must never be exposed to browser code.
+Not installed: shadcn/ui, Radix, clsx, tailwind-merge, React Hook Form,
+Jest/Vitest/Supertest/Playwright, any payment SDK, any PDF or decimal library.
+`cn()` is hand-written in `client/src/lib/utils.ts`. Introducing a new library
+is a deliberate decision; check `package.json` first.
 
-## 6. Documentation Guide
+## 4. Local development
 
-Read these documents before making architectural or feature-level changes.
+### Prerequisites
 
-| File              | Purpose                                   |
-| ----------------- | ----------------------------------------- |
-| `PRD.md`          | Product requirements and project scope    |
-| `DESIGN.md`       | Visual direction, design system, and UX   |
-| `ARCHITECTURE.md` | System architecture and module boundaries |
-| `DATABASE.md`     | Data models, relationships, and indexes   |
-| `API.md`          | API endpoints and access rules            |
-| `AGENTS.md`       | Instructions for AI coding agents         |
-| `README.md`       | Project overview and setup                |
-
-Keep additional implementation and operations documents consistent with these specifications.
-
-## 7. Prerequisites
-
-Install and configure the following before starting development:
-
-- Node.js version compatible with the repository and its dependencies.
-- The package manager indicated by the existing lockfile.
-- Git and a GitHub repository.
-- VS Code with OpenCode configured.
-- A MongoDB Atlas project and database credentials.
-- Authentication configuration after compatibility has been verified.
-- Email provider credentials for notification functionality.
-- Payment provider credentials only when payment processing is implemented.
-- AI provider credentials only when AI features are enabled.
-
-Do not assume a particular Node.js version or package manager without inspecting the project configuration.
-
-## 8. Local Development Setup
-
-### Step 1: Clone the repository
-
-```bash
-git clone <YOUR_REPOSITORY_URL>
-cd growers-journy
-```
-
-Replace the placeholder with the actual repository URL.
-
-### Step 2: Inspect the project
-
-Before installing dependencies, check:
-
-- The root directory and existing application folders.
-- `package.json` files and their scripts.
-- The package-manager lockfile.
-- Existing `.env.example` files.
-- The versions of installed dependencies.
-- The implementation status of the frontend and backend.
-
-### Step 3: Install dependencies
-
-Use the package manager and commands appropriate to each existing application. For example, if the project uses npm:
-
-```bash
-cd frontend
-npm install
-```
-
-For a separately configured backend:
-
-```bash
-cd ../backend
-npm install
-```
-
-These commands are examples. Follow the repository's actual package manager, workspace configuration, and lockfile.
-
-### Step 4: Configure environment variables
-
-Create local environment files using the actual variable names documented by each application.
-
-Typical configuration categories include:
-
-**Frontend**
-
-- Public API base URL.
-- Public application URL, if required.
-- Other explicitly browser-safe settings.
-
-**Backend**
-
-- Application environment and port.
-- MongoDB connection string.
-- Authentication secrets and trusted origins.
-- Email provider credentials.
-- Payment provider credentials and webhook secrets.
-- AI provider credentials, when enabled.
-
-Use `.env.example` to document required variables with placeholder values. Never commit real secrets or production credentials.
-
-### Step 5: Start development servers
-
-Inspect the scripts in each `package.json` before running commands.
-
-If the relevant applications define a `dev` script, the commands may look like:
-
-```bash
-npm run dev
-```
-
-Run the command from the correct application directory. Start the frontend and backend separately unless the repository already provides a root-level development command.
-
-### Step 6: Verify the application
-
-- Confirm that the frontend loads.
-- Confirm that the backend health endpoint responds, if implemented.
-- Verify database connectivity without exposing credentials.
-- Check browser and server logs for errors.
-- Test a public inquiry using valid and invalid input.
-- Verify access restrictions before testing admin or client features.
-
-## 9. Environment and Secret Management
-
-- Keep local environment files out of version control.
-- Commit only safe environment templates.
-- Validate required environment variables at server startup.
-- Keep database, authentication, payment, email, and AI secrets on the server.
-- Never expose private secrets through `NEXT_PUBLIC_` variables.
-- Use separate credentials for local development and production.
-- Rotate credentials if they are accidentally exposed.
-
-## 10. Security Requirements
-
-Security is a core requirement, not a final-stage enhancement.
-
-- Validate incoming data on the server.
-- Authenticate protected requests and enforce server-side role-based access control.
-- Verify ownership and permissions for every client-specific resource.
-- Never allow users to assign themselves administrative roles.
-- Rate-limit public inquiry and authentication endpoints.
-- Protect against spam, injection, unsafe file uploads, and unauthorized access.
-- Use secure session and cookie configuration appropriate to the deployment.
-- Verify payment webhook signatures and prevent duplicate event processing.
-- Calculate invoice totals and financial values on the server.
-- Keep audit records for sensitive administrative actions.
-- Use least-privilege permissions for AI and MCP integrations.
-- Avoid logging passwords, session secrets, API keys, or sensitive client data.
-
-Better Auth integration with the Express API must be explicitly tested. Do not assume that protecting a Next.js page automatically protects its backend API endpoints.
-
-## 11. Testing and Quality Assurance
-
-Add tests alongside features rather than waiting until the entire application is complete.
-
-Recommended coverage:
-
-- Unit tests for business logic and utility functions.
-- API tests for validation, authentication, authorization, and error responses.
-- Integration tests for database-backed workflows.
-- Frontend tests for important forms and user interactions.
-- End-to-end tests for critical user journeys.
-- Responsive and accessibility checks.
-- Security checks for unauthorized access and cross-client data exposure.
-
-Before considering a feature complete, verify its happy path, validation errors, failure handling, permissions, and mobile layout.
-
-## 12. Deployment Strategy
-
-### Frontend
-
-Deploy the Next.js application to Vercel or another compatible hosting platform after verifying framework and runtime requirements.
+- Node.js `>=20.9.0` (the repo was verified on Node 24)
+- npm
+- A MongoDB Atlas database (or a local MongoDB with transactions disabled)
 
 ### Backend
 
-Deploy Express to a Node.js-compatible environment that supports the application's runtime and operational needs. Do not assume that a conventional persistent Express server can be deployed unchanged to every serverless platform.
+```bash
+cd server
+npm install
+copy .env.example .env      # Windows
+# cp .env.example .env      # macOS/Linux
+# Fill in MONGODB_URI, BETTER_AUTH_SECRET, BETTER_AUTH_URL.
+npm run dev
+```
 
-### Database
+The API listens on `http://localhost:5000` by default. It validates configuration
+at startup and exits if required values are missing. **Never commit
+`server/.env`.** When payments are enabled, `NODE_ENV` must be set explicitly;
+the development default in `.env.example` is `NODE_ENV=development`.
 
-Use MongoDB Atlas with production-appropriate network access, database permissions, backups, and secret management.
+After the database is reachable, create indexes once:
 
-### Production checklist
+```bash
+npm run db:indexes
+```
 
-- Configure production environment variables.
-- Configure allowed origins and authentication callbacks.
-- Enable HTTPS.
-- Verify session and cookie behavior across deployed domains.
-- Test database connectivity and authorization.
-- Configure email delivery and payment webhooks as applicable.
-- Check logs, error monitoring, backups, and recovery procedures.
-- Test the deployed application before announcing it publicly.
+### Frontend
 
-## 13. Development Workflow
+```bash
+cd client
+npm install
+copy .env.example .env.local   # Windows
+# cp .env.example .env.local   # macOS/Linux
+npm run dev
+```
 
-Use a small, verifiable implementation cycle:
+The site runs on `http://localhost:3000`. `API_BASE_URL` is server-only;
+`NEXT_PUBLIC_API_BASE_URL` is public and is used by the contact form. Set both
+before building.
 
-1. Read the relevant product and technical documents.
-2. Inspect the existing repository and identify dependencies.
-3. Select one clearly scoped feature.
-4. Write or update its implementation plan.
-5. Implement the smallest useful increment.
-6. Run relevant tests and inspect the results.
-7. Fix regressions before continuing.
-8. Update documentation when behavior or architecture changes.
-9. Commit the verified changes using a clear Git message.
+### First administrator
 
-OpenCode should explain important architectural choices, avoid unnecessary rewrites, and identify assumptions before making risky changes.
+```bash
+cd server
+# Set ADMIN_EMAIL, ADMIN_NAME, ADMIN_PASSWORD (>=12 chars) in the shell.
+npm run create-admin
+```
 
-## 14. Roadmap
+The script creates an `ADMIN` through Better Auth, never prints the password, and
+refuses a second admin unless `ALLOW_ADDITIONAL_ADMIN=true`.
 
-Implementation order should follow the approved product plan. A suggested high-level sequence is:
+## 5. Commands
 
-- [ ] Repository setup and foundational configuration.
-- [ ] Design system and responsive public website.
-- [ ] Backend foundation and database connectivity.
-- [ ] Service and portfolio APIs.
-- [ ] Inquiry submission and lead management.
-- [ ] Authentication and role-based authorization.
-- [ ] Admin dashboard.
-- [ ] Client portal and project tracking.
-- [ ] Invoice management and verified payment integration.
-- [ ] Email notifications and automation.
-- [ ] AI integration foundation and approved MCP use cases.
-- [ ] Testing, security review, and production deployment.
+### Client (`cd client`)
 
-A roadmap item is complete only when its implementation and required verification are complete.
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Next.js dev server (Turbopack) |
+| `npm run build` | Production build |
+| `npm start` | Start the production build |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
 
-## 15. Contribution Guidelines
+### Server (`cd server`)
 
-Before submitting changes:
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | `node --watch index.js` |
+| `npm start` | `node index.js` |
+| `npm test` | `node --test` |
+| `npm run test:watch` | Watch mode |
+| `npm run create-admin` | Provision the first admin |
+| `npm run db:indexes` | Create missing model indexes (additive) |
+| `node scripts/check-db.js` | Standalone MongoDB connectivity check |
 
-- Follow the project's established naming and formatting conventions.
-- Keep frontend, API, database, and business logic responsibilities separate.
-- Avoid adding unnecessary dependencies.
-- Never commit credentials or sensitive data.
-- Add appropriate tests and documentation.
-- Confirm that existing functionality remains intact.
-- Describe changes, verification performed, and known limitations in the pull request.
+Do not run `node --test tests/` on Node 24; the argument is treated as a module
+path. Use the npm script.
 
-## 16. License
+## 6. Security model (summary)
 
-The project's license has not yet been specified. Add a `LICENSE` file and update this section only after the owner chooses the appropriate license.
+- Authentication and authorization are enforced by Express on every protected
+  request. Next.js page guards are not the security boundary.
+- `ADMIN` is required for `/api/v1/admin/*`; `CLIENT` plus an active linked
+  `Client` is required for `/api/v1/portal/*`. `TEAM_MEMBER` has no admin or
+  portal access today.
+- Writes also require a trusted `Origin`; session cookies are `HttpOnly`,
+  `SameSite=Lax`, host-only, and `Secure` on HTTPS.
+- Invoice totals and payment status are never accepted from the browser. Only a
+  signature-verified provider event or a provider-confirmed refund/reconcile
+  changes the ledger.
+- Payment webhooks verify an HMAC over the raw body and deduplicate on
+  `(provider, eventId)`.
+- Public inquiries are rate-limited and use a strict schema; the honeypot returns
+  a normal success response and stores nothing.
+- Secrets stay out of `NEXT_PUBLIC_*`, logs, error responses, and Git. Error
+  responses never include stack traces.
+- Baseline security headers are set on the site and API. A full nonce-based CSP
+  is **not** implemented.
 
----
+## 7. Documentation map
 
-**Growers Journy — Build Smarter. Grow Faster.**
+| File | Purpose |
+| --- | --- |
+| `docs/PRD.md` | Product requirements |
+| `docs/DESIGN.md` | Visual direction and design system |
+| `docs/ARCHITECTURE.md` | System architecture and boundaries |
+| `docs/DATABASE.md` | Data models, relationships, indexes |
+| `docs/API.md` | API endpoints and access rules |
+| `docs/Authentication-Security.md` | Auth and security controls |
+| `docs/Setup.md` | Local setup and environment variables |
+| `docs/Testing-QA.md` | Test strategy and verification |
+| `docs/Deployment.md` | Deployment, operations, backups, rollback |
+| `docs/Release-Checklist.md` | Production release gates |
+| `docs/Project-Implementation.md` | Phased implementation status |
+| `docs/Debbuging.md` | Troubleshooting (filename is intentionally spelled this way) |
 
-Creating useful digital products through web engineering, automation, and AI integration.
+## 8. Known limitations / not implemented
+
+- Legal pages are draft templates pending owner/legal review; they are `noindex`
+  until approved.
+- No real payment provider, production payment smoke test, PDF invoices, email
+  delivery, reminders, or notifications.
+- No client invitation/provisioning flow.
+- No project memberships or team-member project access.
+- No automated frontend/browser or accessibility tests.
+- Rate limiting is in-memory per API process; it is not shared across instances.
+- Public `/services` and `/work` still use static content; admin Service and
+  Portfolio edits do not appear publicly.
+- Real Atlas persistence has not been smoke-tested in this development
+  environment.
+- Better Auth's JSON still includes the session token despite the HttpOnly
+  cookie; a nonce-based CSP is not implemented.
+
+See `docs/Release-Checklist.md` before any deployment.

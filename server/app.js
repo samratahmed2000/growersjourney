@@ -3,6 +3,7 @@ import cors from "cors";
 import { toNodeHandler } from "better-auth/node";
 import { requestId } from "./middleware/request-id.js";
 import { createRequestLogger } from "./middleware/request-logger.js";
+import { createSecurityHeaders } from "./middleware/security-headers.js";
 import { notFound } from "./middleware/not-found.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import healthRouter from "./routes/health.js";
@@ -59,6 +60,11 @@ export function createApp({
    * rotate its own rate-limit key, so it is deliberately not supported.
    */
   trustProxy = false,
+  /**
+   * Send HSTS when the API is reached over HTTPS. `index.js` passes the value
+   * from the validated environment; tests can opt in explicitly.
+   */
+  securityHsts = false,
   /** Injectable in tests only. Defaults to the Mongoose repository. */
   inquiryRepository,
   /** Injectable in tests only. Defaults to 5 requests per 15 minutes. */
@@ -83,6 +89,10 @@ export function createApp({
 
   // Do not advertise the framework in a response header.
   app.disable("x-powered-by");
+
+  // Security headers must cover every response, including 4xx/5xx responses.
+  // Mounted before the request logger so early failures are covered too.
+  app.use(createSecurityHeaders({ hsts: securityHsts }));
 
   // Must be set before any middleware reads req.ip (the rate limiter does).
   app.set("trust proxy", trustProxy);

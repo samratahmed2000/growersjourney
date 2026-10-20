@@ -19,10 +19,25 @@ const DEFAULT_PORT = 5000;
 const DEFAULT_FRONTEND_URL = "http://localhost:3000";
 
 /** Declared early because authentication validation depends on it. */
-const nodeEnv = process.env.NODE_ENV || "development";
+const rawNodeEnv = (process.env.NODE_ENV ?? "").trim().toLowerCase();
+const nodeEnv = rawNodeEnv || "development";
 const isProduction = nodeEnv === "production";
 
 const problems = [];
+const warnings = [];
+
+if (
+  rawNodeEnv &&
+  !["development", "test", "production"].includes(rawNodeEnv)
+) {
+  problems.push(
+    "NODE_ENV must be one of development, test, or production.",
+  );
+} else if (!rawNodeEnv) {
+  warnings.push(
+    "NODE_ENV is not set; defaulting to development. Set NODE_ENV=production in production.",
+  );
+}
 
 /** Print safe, actionable messages and stop the process. */
 function fail(messages) {
@@ -413,8 +428,18 @@ try {
   );
 }
 
+if (paymentsEnabled && !rawNodeEnv) {
+  problems.push(
+    "NODE_ENV must be set explicitly when PAYMENTS_ENABLED=true. Use NODE_ENV=development locally and NODE_ENV=production in production.",
+  );
+}
+
 if (problems.length > 0) {
   fail(problems);
+}
+
+for (const warning of warnings) {
+  console.warn(`[config] Warning: ${warning}`);
 }
 
 /** Frozen, validated configuration. Import this instead of reading process.env. */

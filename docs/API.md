@@ -1,7 +1,7 @@
 # Growers Journy — REST API Specification
 
 **Project:** Growers Journy  
-**Backend:** Node.js + Express.js + TypeScript  
+**Backend:** Node.js + Express.js + **plain JavaScript ESM** (no TypeScript on the server)
 **Database:** MongoDB Atlas + Mongoose  
 **API Style:** REST  
 **API Version:** v1  
@@ -47,6 +47,13 @@ Implement endpoints incrementally. Do not create every endpoint before its featu
 11. Keep controllers thin and business logic in service modules.
 12. Use idempotency for operations where duplicate requests could cause financial or operational problems.
 
+Every API response carries baseline security headers: `X-Content-Type-Options:
+nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy:
+strict-origin-when-cross-origin`, and a restrictive `Permissions-Policy`. The API
+adds `Strict-Transport-Security` when `NODE_ENV=production`. Error responses never
+include stack traces, and logs never include bodies, cookies, query strings, or
+credentials.
+
 ---
 
 ## 3. Base URL and Environment
@@ -54,7 +61,7 @@ Implement endpoints incrementally. Do not create every endpoint before its featu
 Development example:
 
 ```text
-http://localhost:4000/api/v1
+http://localhost:5000/api/v1
 ```
 
 Production example:
@@ -923,7 +930,7 @@ invoice and client and omits provider references and internal failure codes.
 | Endpoint | `/portal/invoices/:id/payment-session` |
 | Access   | Linked active client                   |
 
-Accepts an optional `amountMinor` and an optional `idempotencyKey`. The server
+Accepts an optional `amountMinor` and a **required** `idempotencyKey`. The server
 resolves the client and invoice itself, verifies that the invoice is payable and
 not `DRAFT`, `VOID`, or `PAID`, and caps the amount at the current server
 balance. Partial payments are allowed. The response contains a client-safe payment summary
@@ -931,10 +938,22 @@ and a provider checkout URL; `201` is returned. It omits provider transaction
 references and internal failure codes, and it never marks the invoice paid.
 
 An `idempotencyKey` that already belongs to another invoice or client returns
-`409 IDEMPOTENCY_KEY_REUSED`. A key that belongs to an already successful
-payment returns `alreadyPaid: true` and no checkout URL. A terminal failed
-attempt returns `409 PAYMENT_NOT_RETRYABLE`. When online payments are disabled,
-the endpoint returns `503 PAYMENTS_DISABLED`.
+`409 IDEMPOTENCY_KEY_REUSED`. A retry with the same key returns the existing
+attempt and checkout URL. A key that belongs to an already successful payment
+returns `alreadyPaid: true` and no checkout URL. A terminal failed attempt
+returns `409 PAYMENT_NOT_RETRYABLE`.
+
+A second request with a different key reuses the active `INITIATED`/`PENDING`
+attempt when the amount matches, so a double-click, a lost response, or a second
+tab does not create a second chargeable checkout. A different amount while an
+attempt is active returns `409 PAYMENT_ALREADY_PENDING`. A true concurrent
+creation race is rejected by the partial unique database index with
+`409 PAYMENT_ALREADY_STARTED`; refresh and retry. This is backed by the unique
+`idempotencyKey` index, the partial unique `invoiceId` active-attempt index, and
+the webhook `(provider, eventId)` index, all created by `npm run db:indexes`. An
+abandoned active attempt must be resolved through a documented manual process;
+there is no expiry/cancel endpoint yet. When online payments are disabled, the
+endpoint returns `503 PAYMENTS_DISABLED`.
 
 ### 10.8 Payment Status
 

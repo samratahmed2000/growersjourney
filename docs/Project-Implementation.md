@@ -400,6 +400,38 @@ Deliberately not implemented in Task 09:
   ledger still needs reconciliation. Run the manual reconciliation check; do not
   silently retry a potentially completed refund.
 
+**Production Readiness Pass (active Task 10) status**
+
+Implemented and verified locally:
+
+- Explicit `NODE_ENV` validation (`development` / `test` / `production`). An
+  explicit mode is required when payments are enabled, and the `FAKE` provider
+  is rejected in production.
+- Baseline security headers on the Next.js site and every API response, with
+  HSTS only when the API is in production. A full nonce-based CSP is not
+  implemented.
+- Payment-session hardening: required idempotency key, reuse of an active attempt
+  for the same invoice/amount, and `409 PAYMENT_ALREADY_PENDING` for a conflicting
+  amount. The browser also guards against double submits.
+- `/dev/health` is rewritten to a real 404 in production.
+- Draft legal pages are `noindex` until owner/legal review.
+- Additive index creation script (`npm run db:indexes`) for the unique webhook
+  and payment idempotency indexes.
+- Server-side admin/portal API response validation rejects malformed envelopes.
+- Admin error and invoice/payment loading states; portal invoice loading state.
+- Deployment, backup/recovery, release-checklist, and rollback documentation.
+- Server suite: **155 tests, all passing**. Client lint, typecheck, and production
+  build pass.
+
+Still unresolved (do not describe as production-ready):
+
+- Legal copy approval, real payment provider, production/Atlas finance smoke
+  test, email delivery, notifications, client provisioning, project memberships,
+  shared rate-limit store, APM/metrics/alerting, automated browser/accessibility
+  tests, full CSP, and dynamic public services/portfolio.
+- Refund reconciliation after a provider success + database failure remains a
+  manual operational edge case.
+
 ### Phase 10 — Notifications and Automation
 
 **Objectives**

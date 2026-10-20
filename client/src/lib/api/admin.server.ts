@@ -61,10 +61,19 @@ export async function adminGet<T>(path: string): Promise<AdminGetResult<T>> {
       };
     }
 
+    if (json?.success !== true || json.data === undefined || json.data === null) {
+      return {
+        ok: false,
+        status: 502,
+        code: "INVALID_RESPONSE",
+        message: "The admin API returned an unexpected response.",
+      };
+    }
+
     return {
       ok: true,
-      data: json?.data as T,
-      pagination: json?.pagination as Pagination | undefined,
+      data: json.data as T,
+      pagination: json.pagination as Pagination | undefined,
     };
   } catch {
     return {

@@ -63,14 +63,23 @@ async function issueInvoice({ server, cookie, id }) {
   return response.json.data.invoice;
 }
 
-async function startPayment({ server, cookie, invoiceId, amountMinor }) {
+async function startPayment({
+  server,
+  cookie,
+  invoiceId,
+  amountMinor,
+  idempotencyKey = crypto.randomUUID(),
+}) {
   const response = await jsonRequest(
     server.baseUrl,
     `/api/v1/portal/invoices/${invoiceId}/payment-session`,
     {
       method: "POST",
       cookie,
-      body: amountMinor === undefined ? {} : { amountMinor },
+      body: {
+        idempotencyKey,
+        ...(amountMinor === undefined ? {} : { amountMinor }),
+      },
     },
   );
   assert.equal(response.response.status, 201, JSON.stringify(response.json));
@@ -144,7 +153,7 @@ test("admin and client invoice flow is server-calculated and provider-verified",
       method: "POST",
       cookie: portal.cookie,
       origin: "https://evil.example",
-      body: {},
+      body: { idempotencyKey: crypto.randomUUID() },
     },
   );
   assert.equal(crossSitePayment.response.status, 403);
@@ -276,7 +285,7 @@ test("partial payments, refunds, and void rules use the verified ledger", async 
     {
       method: "POST",
       cookie: portal.cookie,
-      body: { amountMinor: 10001 },
+      body: { amountMinor: 10001, idempotencyKey: crypto.randomUUID() },
     },
   );
   assert.equal(overpay.response.status, 400);
@@ -380,7 +389,11 @@ test("cross-client invoices and payment attempts are concealed", async (t) => {
   const pay = await jsonRequest(
     server.baseUrl,
     `/api/v1/portal/invoices/${secondIssued.id}/payment-session`,
-    { method: "POST", cookie: firstPortal.cookie, body: {} },
+    {
+      method: "POST",
+      cookie: firstPortal.cookie,
+      body: { idempotencyKey: crypto.randomUUID() },
+    },
   );
   assert.equal(pay.response.status, 404);
 
@@ -432,4 +445,78 @@ test("a duplicate webhook delivered concurrently credits the invoice once", asyn
   assert.equal(detail.json.data.invoice.amountPaidMinor, 15000);
   assert.equal(detail.json.data.invoice.status, "PAID");
   assert.equal(built.stores.events.filter((item) => item.eventId === event.eventId).length, 1);
+});
+
+test("payment sessions are idempotent and only one attempt stays active", async (t) => {
+  const server = await startPortalTestServer({
+    financeFactory: ({ repositories, data }) =>
+      createFakeFinance({ repositories, data }).finance,
+  });
+  t.after(() => server.close());
+
+  const admin = await createSignedInUser(server, "ADMIN");
+  const portal = await linkClientUser({
+    app: server,
+    auth: server.auth,
+    data: server.data,
+  });
+  const draft = await createInvoice({ server, cookie: admin.cookie });
+  const issued = await issueInvoice({ server, cookie: admin.cookie, id: draft.id });
+
+  const key = crypto.randomUUID();
+  const first = await startPayment({
+    server,
+    cookie: portal.cookie,
+    invoiceId: issued.id,
+    idempotencyKey: key,
+  });
+
+  const retry = await startPayment({
+    server,
+    cookie: portal.cookie,
+    invoiceId: issued.id,
+    idempotencyKey: key,
+  });
+  assert.equal(retry.payment.id, first.payment.id);
+
+  // A different key (for example from a second tab) reuses the active attempt
+  // instead of creating a second chargeable checkout.
+  const secondTab = await startPayment({
+    server,
+    cookie: portal.cookie,
+    invoiceId: issued.id,
+    idempotencyKey: crypto.randomUUID(),
+  });
+  assert.equal(secondTab.payment.id, first.payment.id);
+
+  const listed = await jsonRequest(
+    server.baseUrl,
+    `/api/v1/admin/payments?invoiceId=${issued.id}`,
+    { cookie: admin.cookie },
+  );
+  assert.equal(listed.response.status, 200, JSON.stringify(listed.json));
+  assert.equal(listed.json.data.items.length, 1);
+
+  const conflictingAmount = await jsonRequest(
+    server.baseUrl,
+    `/api/v1/portal/invoices/${issued.id}/payment-session`,
+    {
+      method: "POST",
+      cookie: portal.cookie,
+      body: { amountMinor: 5000, idempotencyKey: crypto.randomUUID() },
+    },
+  );
+  assert.equal(conflictingAmount.response.status, 409);
+  assert.equal(
+    conflictingAmount.json.error.code,
+    "PAYMENT_ALREADY_PENDING",
+  );
+
+  const missingKey = await jsonRequest(
+    server.baseUrl,
+    `/api/v1/portal/invoices/${issued.id}/payment-session`,
+    { method: "POST", cookie: portal.cookie, body: {} },
+  );
+  assert.equal(missingKey.response.status, 400);
+  assert.equal(missingKey.json.error.code, "VALIDATION_ERROR");
 });

@@ -90,6 +90,7 @@ try {
 const app = createApp({
   allowedOrigins: env.frontendUrls,
   trustProxy: env.trustProxy,
+  securityHsts: env.isProduction,
   auth,
   finance,
 });

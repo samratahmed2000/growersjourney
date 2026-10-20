@@ -7,6 +7,10 @@ export const metadata: Metadata = {
   description:
     "How Growers Journy handles information collected through this website. Draft template pending legal review.",
   alternates: { canonical: "/privacy-policy" },
+  // This is a reviewed-template placeholder, not final legal advice. Keep it
+  // out of search indexes until the owner confirms the jurisdiction-specific
+  // content and removes the draft banner.
+  robots: { index: false, follow: true },
 };
 
 export default function PrivacyPolicyPage() {

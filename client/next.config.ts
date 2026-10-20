@@ -21,6 +21,26 @@ const API_ORIGIN = (() => {
   }
 })();
 
+/** Headers applied to every browser-facing response. */
+const BASELINE_SECURITY_HEADERS = [
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), payment=()",
+  },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  // A full nonce-based CSP is a separate hardening step. These directives are
+  // safe for every page and close framing/base-tag/form-action gaps now.
+  {
+    key: "Content-Security-Policy",
+    value: "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  },
+  // Ignored on plain HTTP (local development) and enforced on HTTPS.
+  { key: "Strict-Transport-Security", value: "max-age=31536000" },
+];
+
 /** Headers for areas that must never be cached or indexed. */
 const PRIVATE_PAGE_HEADERS = [
   { key: "Cache-Control", value: "private, no-store, max-age=0, must-revalidate" },
@@ -75,13 +95,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/:path*",
-        headers: [
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          {
-            key: "Referrer-Policy",
-            value: "strict-origin-when-cross-origin",
-          },
-        ],
+        headers: BASELINE_SECURITY_HEADERS,
       },
       ...["/admin", "/admin/:path*", "/portal", "/portal/:path*", "/login"].map(
         (source) => ({ source, headers: PRIVATE_PAGE_HEADERS }),

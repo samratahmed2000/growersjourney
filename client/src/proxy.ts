@@ -20,12 +20,22 @@ import { projects } from "@/lib/content/projects";
  * The portfolio is a small, fixed set of slugs, so the check here is a Set
  * lookup with no I/O — Proxy code should stay fast and must not fetch content.
  *
- * Scope: only /work/* is matched, so no other route pays for this.
+ * Scope: /work/* for the 404 check, plus /dev/* so the development health page
+ * can be gated in production. No other route pays for this.
  */
 const KNOWN_PROJECT_SLUGS = new Set(projects.map((project) => project.slug));
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 export function proxy(request: NextRequest) {
-  const match = /^\/work\/([^/]+)\/?$/.exec(request.nextUrl.pathname);
+  const pathname = request.nextUrl.pathname;
+
+  // The backend-health page is a development diagnostic. It must not be
+  // reachable in production, where it would reveal the internal API address.
+  if (IS_PRODUCTION && (pathname === "/dev" || pathname.startsWith("/dev/"))) {
+    return NextResponse.rewrite(new URL("/_not-found", request.url));
+  }
+
+  const match = /^\/work\/([^/]+)\/?$/.exec(pathname);
 
   if (!match) {
     return NextResponse.next();
@@ -40,5 +50,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/work/:slug*"],
+  matcher: ["/work/:slug*", "/dev", "/dev/:path*"],
 };

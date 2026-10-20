@@ -406,6 +406,54 @@ Distinguish development MCP used by OpenCode from MCP features intentionally dep
 
 Do not grant broader permissions simply to make a tool call succeed.
 
+## 10.1 Current repository-specific failures
+
+### Server exits at startup
+
+The config loader names the missing or malformed variable and exits 1. Check
+`server/.env` against `server/.env.example`. If `PAYMENTS_ENABLED=true`,
+`NODE_ENV` must be set explicitly. Never paste secret values into logs, chat, or
+issues.
+
+### MongoDB connection or index errors
+
+Run `cd server && node scripts/check-db.js`. Confirm the URI includes a database
+name and that the password is URL-encoded. Run `npm run db:indexes` to create
+missing indexes; it never drops data. The unique `(provider, eventId)` index is
+required for webhook idempotency.
+
+### Login works but protected pages redirect
+
+`BETTER_AUTH_URL` is the public **site** origin, not the API port. The browser
+calls `/api/auth/*` on Next.js, which rewrites to Express. `FRONTEND_URL` must
+contain that exact site origin for CORS/Better Auth.
+
+### Contact form fails while the API is healthy
+
+`NEXT_PUBLIC_API_BASE_URL` is inlined at build time. Set it before building,
+confirm the browser can reach it, and confirm the site origin is in
+`FRONTEND_URL`. A server-side `API_BASE_URL` alone is not enough for the contact
+form.
+
+### Payment session returns `409 PAYMENT_ALREADY_PENDING`
+
+An active `INITIATED`/`PENDING` payment exists for the invoice and the requested
+amount differs from it. Complete or reconcile the existing attempt; do not create
+a second checkout to bypass the guard. If a session was genuinely abandoned,
+document the operational handling before changing state manually.
+
+### Webhook returns 401/400
+
+The handler verifies an HMAC over the raw body. It must run before
+`express.json()`, and the secret must match the provider. Never disable signature
+verification to make a webhook pass. Duplicate events return `200` with
+`duplicate: true` and must credit nothing.
+
+### `npm run build` type errors after pulling
+
+Remove the stale `.next/` directory and re-run `npm run typecheck`. Do not delete
+route files to silence errors; empty route files break every route.
+
 ## 11. Performance and Memory Debugging
 
 When the application becomes slow or crashes:

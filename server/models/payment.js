@@ -144,6 +144,22 @@ paymentSchema.index({ status: 1, createdAt: 1 });
 paymentSchema.index({ provider: 1, providerTransactionId: 1 }, { unique: true, sparse: true });
 paymentSchema.index({ provider: 1, providerPaymentId: 1 }, { unique: true, sparse: true });
 paymentSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
+// At most one chargeable attempt per invoice. The partial filter means the
+// constraint applies only while an attempt is INITIATED/PENDING; once it reaches
+// a terminal or successful state, the invoice can start another attempt (for
+// example, a partial payment followed by the remaining balance). This closes the
+// race that an application-level "find active, then create" check cannot close
+// on its own.
+paymentSchema.index(
+  { invoiceId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: { $in: ["INITIATED", "PENDING"] },
+    },
+    name: "one_active_payment_per_invoice",
+  },
+);
 
 paymentSchema.pre("validate", function validateRefundTotal() {
   if (this.refundedAmountMinor > this.amountMinor) {

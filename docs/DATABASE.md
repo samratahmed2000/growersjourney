@@ -797,6 +797,15 @@ Create indexes based on actual queries and uniqueness requirements.
 
 Before adding an index, confirm that it supports an actual query or integrity requirement.
 
+**Creating indexes in a deployed environment:** run `npm run db:indexes` from
+`server/` after the first deployment and after any model index change. The
+script calls `createIndexes()` on each model, so it only adds missing indexes; it
+does not drop indexes or data. The unique `(provider, eventId)` index on
+`payment_events` is required for webhook idempotency, and the unique
+`idempotencyKey` index on `payments` backs the payment-session retry control. Do
+not replace this with `syncIndexes()` in an automated deployment step, because
+that can drop indexes not declared by the current schema.
+
 Compound indexes should match the application's filtering and sorting patterns. Avoid unnecessary indexes because they consume storage and increase write costs.
 
 ---
