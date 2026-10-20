@@ -56,6 +56,23 @@ const clientSchema = new mongoose.Schema(
       maxlength: CLIENT_LIMITS.notes.max,
       default: undefined,
     },
+    /**
+     * Explicit link to a Better Auth account. An email match alone never grants
+     * portal access. Only an ADMIN may set or clear this field.
+     */
+    userId: {
+      type: String,
+      trim: true,
+      maxlength: 128,
+      default: undefined,
+    },
+    portalLinkedAt: { type: Date, default: undefined },
+    portalLinkedBy: {
+      type: String,
+      trim: true,
+      maxlength: 128,
+      default: undefined,
+    },
     updatedBy: {
       type: String,
       trim: true,
@@ -71,6 +88,7 @@ const clientSchema = new mongoose.Schema(
 );
 
 clientSchema.index({ primaryEmail: 1 }, { unique: true });
+clientSchema.index({ userId: 1 }, { unique: true, sparse: true });
 clientSchema.index({ displayName: 1 });
 clientSchema.index({ status: 1, createdAt: -1 });
 

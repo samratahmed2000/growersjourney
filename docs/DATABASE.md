@@ -368,21 +368,28 @@ interface Project {
 
 Use Mongoose references or a consistent identifier type for all relationship fields.
 
-### Implemented in Task 07
+### Implemented in Task 07 and Task 08
 
-The four admin models exist now. They are intentionally narrower than the
-future target above, and no production seed data is inserted.
+The admin models exist now. They are intentionally narrower than the future
+target above, and no production seed data is inserted.
 
 | Model / collection       | Implemented fields and rules |
 | ------------------------ | ---------------------------- |
-| `Client` / `clients`     | `displayName` (2–120), `companyName` (≤160), unique lowercase `primaryEmail` (≤254), `phone` (≤40), `status` `ACTIVE`/`INACTIVE` (default `ACTIVE`), optional internal `notes` (≤5000), `updatedBy`, timestamps. Indexes: unique `primaryEmail`, `displayName`, `status + createdAt`. |
-| `Project` / `projects`   | `name` (2–160), optional `description` (≤5000), required `clientId` reference, status enum `PLANNING`/`IN_PROGRESS`/`ON_HOLD`/`COMPLETED`/`CANCELLED`, optional `startDate`/`dueDate`/`completedAt`, `createdBy`, timestamps. A pre-validation hook rejects `dueDate` before `startDate`. Indexes: `clientId + updatedAt`, `status + updatedAt`, `createdAt`. |
+| `Client` / `clients`     | `displayName` (2–120), `companyName` (≤160), unique lowercase `primaryEmail` (≤254), `phone` (≤40), `status` `ACTIVE`/`INACTIVE` (default `ACTIVE`), optional internal `notes` (≤5000), optional `userId` link to a Better Auth account, `portalLinkedAt`/`portalLinkedBy`, `updatedBy`, timestamps. Indexes: unique `primaryEmail`, unique sparse `userId`, `displayName`, `status + createdAt`. |
+| `Project` / `projects`   | `name` (2–160), optional `description` (≤5000), required `clientId` reference, status enum `PLANNING`/`IN_PROGRESS`/`ON_HOLD`/`COMPLETED`/`CANCELLED`, optional `startDate`/`dueDate`/`completedAt`, `statusChangedAt`/`statusChangedBy`, up to 10 external `links` (`label`, `url`), `createdBy`/`updatedBy`, timestamps. A pre-validation hook rejects `dueDate` before `startDate`. Indexes: `clientId + status + updatedAt`, `clientId + updatedAt`, `status + updatedAt`, `createdAt`. |
+| `Milestone` / `milestones` | `projectId` reference, `title` (2–160), optional `description` (≤2000), status `PENDING`/`IN_PROGRESS`/`COMPLETED`/`BLOCKED` (default `PENDING`), optional `dueDate`/`completedAt`, `sortOrder` (0–9999), `createdBy`/`updatedBy`, timestamps. `completedAt` is derived from status in a pre-validation hook. Indexes: `projectId + sortOrder`, `projectId + dueDate`, `projectId + status`. |
+| `ProjectUpdate` / `projectupdates` | `projectId` reference, `title` (2–160), `body` (2–5000), visibility `INTERNAL`/`CLIENT` (default `INTERNAL`), required `authorId`/`authorName`, `updatedBy`, timestamps. Indexes: `projectId + visibility + createdAt`, `projectId + createdAt`. |
 | `Service` / `services`   | `title`, immutable unique `slug`, `summary`, optional `description`/`audience`, icon allowlist, bounded `problems`/`deliverables`/`capabilities`/`technologies` arrays, `isPublished`, `isArchived`, `sortOrder` (0–9999), `updatedBy`, timestamps. Indexes: unique `slug`, `isArchived + isPublished + sortOrder`. |
 | `PortfolioProject` / `portfolioprojects` | `title`, immutable unique `slug`, `summary`, optional `description`/`category`, status `CONCEPT`/`IN_PROGRESS`/`COMPLETED`, bounded `technologies`/`features`/`imageUrls`, validated optional `thumbnailUrl`/`liveUrl`/`sourceUrl`, `isFeatured`, `isPublished`, `publishedAt`, `isSample` (default `true`), `isArchived`, `updatedBy`, timestamps. Indexes: unique `slug`, publication/featured index, `category`. |
 
-Task 07 does **not** implement `userId` on clients, project memberships,
-milestones, project updates, invoices, or payments. A client record is not an
-authentication account and grants no portal access.
+Task 08 implements one portal login per client record through `Client.userId`.
+Multiple contacts for one client require a future membership/invitation model.
+A client record is still not an authentication account, and linking an account is
+an explicit ADMIN action. There is no automatic link based on a matching email.
+
+Project memberships, invoices, and payments are still **not implemented**.
+Projects, milestones, and updates are never hard-deleted; projects are cancelled
+and child records are edited.
 
 `isSample` defaults to `true` deliberately. Publishing real case studies
 requires an explicit administrator decision; the model has no testimonial,

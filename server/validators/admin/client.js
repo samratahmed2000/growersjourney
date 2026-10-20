@@ -75,3 +75,7 @@ export const updateClientSchema = z
   .refine((value) => Object.keys(value).length > 0, {
     message: "Provide at least one field to update.",
   });
+
+export const portalAccessSchema = z.strictObject({
+  email: z.union([emailSchema, z.null()]),
+});

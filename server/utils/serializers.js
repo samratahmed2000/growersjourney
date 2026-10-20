@@ -1,4 +1,6 @@
 import { INQUIRY_STATUS_TRANSITIONS } from "../constants/inquiry.js";
+import { MILESTONE_STATUS_TRANSITIONS } from "../constants/milestone.js";
+import { PROJECT_STATUS_TRANSITIONS } from "../constants/project.js";
 
 /**
  * Safe API projections.
@@ -87,12 +89,136 @@ export function serializeProjectSummary(project) {
   };
 }
 
-export function serializeProjectDetail(project) {
+export function serializeProjectDetail(project, { milestoneCounts } = {}) {
   return {
     ...serializeProjectSummary(project),
     description: project.description ?? null,
+    links: (project.links ?? []).map((link) => ({
+      label: link.label,
+      url: link.url,
+    })),
+    completedAt: date(project.completedAt),
+    statusChangedAt: date(project.statusChangedAt),
+    createdAt: date(project.createdAt),
+    allowedNextStatuses: [...(PROJECT_STATUS_TRANSITIONS[project.status] ?? [])],
+    milestoneCounts: milestoneCounts ?? { total: 0, completed: 0 },
+  };
+}
+
+function normalizeMilestoneCounts(counts) {
+  return {
+    total: counts?.total ?? 0,
+    completed: counts?.completed ?? 0,
+  };
+}
+
+export function serializePortalProjectSummary(project, counts) {
+  return {
+    id: id(project._id ?? project.id),
+    name: project.name,
+    status: project.status,
+    startDate: date(project.startDate),
+    dueDate: date(project.dueDate),
+    updatedAt: date(project.updatedAt),
+    milestoneCounts: normalizeMilestoneCounts(counts),
+  };
+}
+
+export function serializePortalProjectDetail(project, counts) {
+  return {
+    ...serializePortalProjectSummary(project, counts),
+    description: project.description ?? null,
     completedAt: date(project.completedAt),
     createdAt: date(project.createdAt),
+    links: (project.links ?? []).map((link) => ({
+      label: link.label,
+      url: link.url,
+    })),
+  };
+}
+
+export function serializeMilestone(milestone) {
+  return {
+    id: id(milestone._id ?? milestone.id),
+    projectId: id(milestone.projectId),
+    title: milestone.title,
+    description: milestone.description ?? null,
+    status: milestone.status,
+    dueDate: date(milestone.dueDate),
+    completedAt: date(milestone.completedAt),
+    sortOrder: milestone.sortOrder ?? 0,
+    createdAt: date(milestone.createdAt),
+    updatedAt: date(milestone.updatedAt),
+    allowedNextStatuses: [
+      ...(MILESTONE_STATUS_TRANSITIONS[milestone.status] ?? []),
+    ],
+  };
+}
+
+/** Portal milestones do not expose workflow transition metadata. */
+export function serializePortalMilestone(milestone) {
+  const serialized = serializeMilestone(milestone);
+  delete serialized.allowedNextStatuses;
+  return serialized;
+}
+
+export function serializeProjectUpdate(update) {
+  return {
+    id: id(update._id ?? update.id),
+    projectId: id(update.projectId),
+    title: update.title,
+    body: update.body,
+    visibility: update.visibility,
+    authorId: update.authorId,
+    authorName: update.authorName,
+    createdAt: date(update.createdAt),
+    updatedAt: date(update.updatedAt),
+  };
+}
+
+/** Portal updates omit internal visibility and author identifiers. */
+export function serializePortalProjectUpdate(update) {
+  return {
+    id: id(update._id ?? update.id),
+    projectId: id(update.projectId),
+    title: update.title,
+    body: update.body,
+    authorName: update.authorName,
+    createdAt: date(update.createdAt),
+    updatedAt: date(update.updatedAt),
+  };
+}
+
+export function serializePortalActivity(update) {
+  return {
+    id: id(update._id ?? update.id),
+    projectId: id(update.projectId),
+    projectName: update.projectName ?? null,
+    title: update.title,
+    body: update.body,
+    authorName: update.authorName,
+    createdAt: date(update.createdAt),
+  };
+}
+
+export function serializePortalUpcomingMilestone(milestone) {
+  return {
+    id: id(milestone._id ?? milestone.id),
+    projectId: id(milestone.projectId),
+    projectName: milestone.projectName ?? null,
+    title: milestone.title,
+    status: milestone.status,
+    dueDate: date(milestone.dueDate),
+  };
+}
+
+export function serializePortalAccess(user) {
+  if (!user) return null;
+  return {
+    userId: id(user.id ?? user._id),
+    name: user.name ?? null,
+    email: user.email ?? null,
+    linkedAt: date(user.linkedAt),
   };
 }
 

@@ -64,6 +64,10 @@ const nextConfig: NextConfig = {
         source: "/api/v1/admin/:path*",
         destination: `${API_BASE_URL}/admin/:path*`,
       },
+      {
+        source: "/api/v1/portal/:path*",
+        destination: `${API_BASE_URL}/portal/:path*`,
+      },
     ];
   },
 
@@ -88,6 +92,13 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/api/v1/admin/:path*",
+        headers: [
+          { key: "Cache-Control", value: "no-store" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
+      {
+        source: "/api/v1/portal/:path*",
         headers: [
           { key: "Cache-Control", value: "no-store" },
           { key: "X-Robots-Tag", value: "noindex, nofollow" },

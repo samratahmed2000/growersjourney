@@ -81,8 +81,54 @@ export type ProjectSummary = {
 
 export type ProjectDetail = ProjectSummary & {
   description: string | null;
+  links: { label: string; url: string }[];
   completedAt: string | null;
+  statusChangedAt: string | null;
   createdAt: string | null;
+  allowedNextStatuses: ProjectStatus[];
+  milestoneCounts: { total: number; completed: number };
+};
+
+export type MilestoneStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED";
+
+export type Milestone = {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  status: MilestoneStatus;
+  dueDate: string | null;
+  completedAt: string | null;
+  sortOrder: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+  allowedNextStatuses: MilestoneStatus[];
+};
+
+export type ProjectUpdateVisibility = "INTERNAL" | "CLIENT";
+
+export type ProjectUpdate = {
+  id: string;
+  projectId: string;
+  title: string;
+  body: string;
+  visibility: ProjectUpdateVisibility;
+  authorId: string;
+  authorName: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type PortalAccess = {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  linkedAt: string | null;
+  missing: boolean;
+};
+
+export type ClientDetailWithAccess = ClientDetail & {
+  portalAccess: PortalAccess | null;
 };
 
 export type Service = {

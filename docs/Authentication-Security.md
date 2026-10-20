@@ -94,9 +94,11 @@ The following arrangement was verified against the installed versions and is the
 
 Roles are stored as the exact strings `ADMIN`, `TEAM_MEMBER`, and `CLIENT` in Better Auth's admin-plugin `role` field. Unknown or missing roles are denied, never defaulted. The admin plugin marks the role field `input: false`, so the public profile update endpoint cannot set it; a direct test confirms a `CLIENT` update with `role: "ADMIN"` is rejected with `FIELD_NOT_ALLOWED`. The admin plugin's `/admin/set-role` endpoint returns `403` for a client session.
 
-The admin area accepts `ADMIN` only in Task 07; the portal accepts `CLIENT` only. A `TEAM_MEMBER` session is denied `/admin` and every `/api/v1/admin/*` endpoint. Staff do **not** receive implicit portal access, and `assertResourceOwner` does not grant staff implicit ownership of client records. A future support-access feature must add an explicit, audited membership check.
+The admin area accepts `ADMIN` only; the portal accepts `CLIENT` only. A `TEAM_MEMBER` session is denied `/admin` and every `/api/v1/admin/*` endpoint. Staff do **not** receive implicit portal access, and the ownership helpers do not grant staff implicit ownership of client records. A future support-access feature must add an explicit, audited membership check.
 
 Task 07's `/api/v1/admin/*` router applies `requireAuth` → `requireRole(ADMIN)` → `requireTrustedOrigin` to every management route, then sets `Cache-Control: private, no-store`. The browser calls same-origin `/api/v1/admin/*` through a Next rewrite; the Next server forwards the HttpOnly cookie to Express for page reads. A page guard is never treated as the security boundary. Request bodies and query objects are strict Zod schemas, so client-supplied roles, ownership fields, internal fields, unknown sort keys, and malformed ids are rejected rather than forwarded to Mongoose.
+
+Task 08 adds a second gate for portal data. `/api/v1/portal/*` applies `requireAuth` → `requireRole(CLIENT)` → `createRequirePortalClient`. The last step resolves an **active** `Client` whose `userId` equals the authenticated user id; an unlinked or inactive client gets `403 PORTAL_ACCESS_DENIED`. The resolved `Client._id` is stored as `req.portal.client`, and every project query is scoped to it. Another client's project, milestone, or update returns `404 NOT_FOUND`. There is no automatic link based on a matching email; an ADMIN must explicitly link an existing `CLIENT` account on the client record, and one account can link to one client only.
 
 Protected endpoints implemented in this phase:
 
@@ -105,10 +107,12 @@ Protected endpoints implemented in this phase:
 | `GET /api/v1/auth/me` | Authenticated | Safe profile: id, email, name, role, session expiry. Never a token or password. |
 | `GET /api/v1/admin/access` | ADMIN | Proves the admin role check. |
 | `GET /api/v1/portal/access` | CLIENT | Proves the client role check and denies staff. |
+| `/api/v1/admin/{projects,milestones,updates,clients/:id/portal-access}` | ADMIN + trusted origin for writes | Project workflow and explicit portal-account linking. |
+| `/api/v1/portal/{dashboard,projects,projects/:id/milestones,projects/:id/updates}` | CLIENT + active linked client | Client-scoped project data; internal updates are filtered in the database query. |
 
 Public routes (`/api/v1/health`, `/api/v1/health/ready`, `POST /api/v1/inquiries`, `GET /`) remain unauthenticated.
 
-**Not implemented in this phase:** password reset/recovery (requires email delivery, which is out of scope), email verification, client/team invitation UI, and any dashboard, project, or invoice feature. There is no public sign-up endpoint (`emailAndPassword.disableSignUp: true`).
+**Not implemented in this phase:** password reset/recovery (requires email delivery, which is out of scope), email verification, client/team invitation UI or account provisioning, project memberships, invoices/payments, and notifications. There is no public sign-up endpoint (`emailAndPassword.disableSignUp: true`).
 
 **Residual risks and unverified items:**
 
@@ -156,9 +160,9 @@ Requirements:
 
 ### Client accounts
 
-Client accounts should be created through an approved registration, invitation, or onboarding workflow.
+Client accounts should be created through an approved registration, invitation, or onboarding workflow. Task 08 does **not** implement account creation or invitation. An administrator links an existing `CLIENT` account to a client record by exact email lookup; the link is stored on `Client.userId` and enforced on every portal request. Creating or editing a client record never creates a login or grants access, and signing in with a matching email does not link automatically.
 
-A client must not gain access to a project simply by changing a URL or submitting a different user ID.
+A client must not gain access to a project simply by changing a URL or submitting a different user ID. Cross-client project, milestone, and update requests return `404`.
 
 ### Team accounts
 

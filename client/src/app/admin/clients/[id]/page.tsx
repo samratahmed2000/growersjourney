@@ -5,6 +5,7 @@ import { ArrowLeft, Mail, Phone } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { AdminErrorState } from "@/components/admin/error-state";
 import { ClientStatusButton } from "@/components/admin/client-status-button";
+import { PortalAccessForm } from "@/components/admin/portal-access-form";
 import { DataTable } from "@/components/admin/data-table";
 import { EmptyState } from "@/components/admin/empty-state";
 import { StatusBadge } from "@/components/admin/status-badge";
@@ -13,7 +14,7 @@ import { Card } from "@/components/ui/card";
 import { adminGet } from "@/lib/api/admin.server";
 import { formatDate } from "@/lib/admin/format";
 import { clientTone, projectTone } from "@/lib/admin/status";
-import type { ClientDetail, ProjectSummary } from "@/lib/admin/types";
+import type { ClientDetail, PortalAccess, ProjectSummary } from "@/lib/admin/types";
 
 export const metadata: Metadata = {
   title: "Client details",
@@ -31,6 +32,7 @@ export default async function AdminClientDetailPage({
   const result = await adminGet<{
     client: ClientDetail;
     projects: ProjectSummary[];
+    portalAccess: PortalAccess | null;
   }>(`/admin/clients/${encodeURIComponent(id)}`);
 
   if (!result.ok) {
@@ -46,7 +48,7 @@ export default async function AdminClientDetailPage({
     );
   }
 
-  const { client, projects } = result.data;
+  const { client, projects, portalAccess } = result.data;
 
   return (
     <>
@@ -149,7 +151,10 @@ export default async function AdminClientDetailPage({
             {projects.length === 0 ? (
               <EmptyState
                 title="No linked projects"
-                description="Projects appear here when a project record references this client. Project creation is not part of Task 07."
+                description="Projects appear here when a project record references this client."
+                action={
+                  <ButtonLink href="/admin/projects/new">Create a project</ButtonLink>
+                }
               />
             ) : (
               <DataTable
@@ -194,11 +199,12 @@ export default async function AdminClientDetailPage({
 
         <div className="space-y-6">
           <Card className="p-5 sm:p-6">
-            <h2 className="text-base font-semibold text-ink">Access</h2>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              A client record is separate from a login. This page cannot create,
-              invite, or impersonate a portal account.
+            <h2 className="text-base font-semibold text-ink">Portal access</h2>
+            <p className="mb-4 text-sm leading-6 text-muted">
+              Link an existing CLIENT login to this business record. This page
+              cannot create, invite, or impersonate an account.
             </p>
+            <PortalAccessForm clientId={client.id} portalAccess={portalAccess} />
           </Card>
 
           <Card className="p-5 sm:p-6">

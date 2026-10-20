@@ -222,13 +222,21 @@ Task 07 test files:
 | `admin-api.test.js` | anonymous/`TEAM_MEMBER`/`CLIENT` denied and `ADMIN` allowed; missing/untrusted origin on writes; inquiry list pagination/filter validation and invalid ids; valid and invalid status transitions; unknown fields rejected; duplicate client email; client detail with linked projects; duplicate service slug, create, archive; portfolio unsafe URL, publication and featured rules; read-only project list/detail; repository failure → generic `500` with no internal detail |
 | `admin-models.test.js` | Client normalization/defaults/status validation; Project required client and date-order validation; Service slug/defaults/bounded arrays; Portfolio sample default and image limit; URL normalization; empty update schemas; inquiry transition map and serializer field safety |
 
-Current result: **119/119 server tests pass** (`npm test` from `server/`). This includes the 70 tests from Tasks 03–05, 30 Task 06 tests, and 19 Task 07 tests.
+Task 08 test files:
+
+| File | Coverage |
+| --- | --- |
+| `portal-api.test.js` | linked vs unlinked CLIENT, inactive client link, ADMIN/TEAM_MEMBER denial, dashboard scoping and internal-update exclusion, project list/detail/milestone/update ownership, forged `clientId` query rejection, malformed ids, generic `500` on repository failure |
+| `project-workflow.test.js` | project creation with active clients, inactive/unknown client handling, date-order validation, status transitions and conflicts, client reassignment, milestone date bounds and transitions, internal vs client-visible updates, portal visibility, explicit portal link/unlink and duplicate/role/unknown errors, role denial |
+| `project-models.test.js` | Project defaults/date order/link bounds, Milestone completion derivation and status enum, ProjectUpdate default visibility/author, Client link fields and sparse unique index |
+
+Current result: **134/134 server tests pass** (`npm test` from `server/`). This includes the 70 tests from Tasks 03–05, 30 Task 06 tests, 19 Task 07 tests, and 15 Task 08 tests.
 
 What is **not** automated:
 
 - The actual `Inquiry.create()` write to MongoDB. There is no test database and no in-memory MongoDB dependency. Verify it manually against a development database, never against production data.
-- A real MongoDB connection, real Better Auth persistence, and `scripts/create-admin.js` against Atlas. Use a development database and verify the `user`/`account`/`session` collections manually.
-- Browser behaviour of the login form, cookie persistence through the Next rewrite, screen-reader announcements, and visual states. A live smoke test against `next start` + a memory-adapter Express server was run manually during Task 06; results are recorded in the implementation report, not in CI.
+- A real MongoDB connection, real Better Auth persistence, `scripts/create-admin.js`, and live project/milestone/update/portal-link writes against Atlas. Use a development database and verify the `clients`, `projects`, `milestones`, `projectupdates`, and Better Auth collections manually.
+- Browser behaviour of the login form, cookie persistence through the Next rewrite, screen-reader announcements, and visual states. A live smoke test against `next start` + a memory-adapter Express server was run manually during Task 06; Task 08 browser interaction, responsive checks, and screen-reader checks were not run.
 - Real HTTPS cookie behavior. `Secure`/`__Secure-` were verified by inspecting the `Set-Cookie` header from a `useSecureCookies: true` instance, not from an HTTPS deployment.
 
 ### Frontend contact form (manual)

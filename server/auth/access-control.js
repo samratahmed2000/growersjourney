@@ -19,6 +19,45 @@ import { ROLES, normalizeRole } from "./roles.js";
 export const DEFAULT_OWNER_FIELD = "clientUserId";
 
 /**
+ * Build the query fragment for records owned by a resolved Client document.
+ *
+ * This is the project-style ownership check: `Project.clientId` points at a
+ * Client `_id`, not at a Better Auth user id. The caller must resolve the client
+ * from `req.auth.user.id` first.
+ */
+export function clientOwnedQuery(clientId) {
+  if (!clientId) {
+    throw new HttpError(
+      403,
+      "PORTAL_ACCESS_DENIED",
+      "Your account is not linked to an active client record.",
+    );
+  }
+
+  return { clientId };
+}
+
+/**
+ * Assert that a loaded record belongs to the resolved client.
+ *
+ * Cross-client access intentionally returns 404, because confirming that the
+ * record exists would already leak information.
+ */
+export function assertClientOwned({ clientId, resource }) {
+  if (!clientId || !resource || typeof resource !== "object") {
+    throw notFoundError();
+  }
+
+  const ownerId = resource.clientId;
+
+  if (!ownerId || String(ownerId) !== String(clientId)) {
+    throw notFoundError();
+  }
+
+  return resource;
+}
+
+/**
  * Reduce a Better Auth user to the fields the rest of the application needs.
  * Never include the account password, session token, or provider secrets.
  *

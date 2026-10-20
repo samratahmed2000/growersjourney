@@ -9,6 +9,7 @@ import healthRouter from "./routes/health.js";
 import createInquiriesRouter from "./routes/inquiries.js";
 import createAuthRouter from "./routes/auth.js";
 import createAdminRouter from "./routes/admin/index.js";
+import createPortalRouter from "./routes/portal/index.js";
 
 /**
  * Builds the Express application.
@@ -68,6 +69,8 @@ export function createApp({
   auth,
   /** Injectable in tests only. Defaults to the Mongoose admin repositories. */
   adminRepositories,
+  /** Injectable in tests only. Defaults to the Mongoose portal repositories. */
+  portalRepositories,
 } = {}) {
   const app = express();
 
@@ -122,6 +125,13 @@ export function createApp({
         auth,
         allowedOrigins,
         repositories: adminRepositories,
+      }),
+    );
+    app.use(
+      "/api/v1/portal",
+      createPortalRouter({
+        auth,
+        repositories: portalRepositories,
       }),
     );
   }

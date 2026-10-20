@@ -1,6 +1,7 @@
 import type {
   ClientStatus,
   InquiryStatus,
+  MilestoneStatus,
   PortfolioStatus,
   ProjectStatus,
 } from "./types";
@@ -40,6 +41,13 @@ const PORTFOLIO_TONES: Record<PortfolioStatus, StatusTone> = {
   COMPLETED: "accent",
 };
 
+const MILESTONE_TONES: Record<MilestoneStatus, StatusTone> = {
+  PENDING: "neutral",
+  IN_PROGRESS: "info",
+  COMPLETED: "accent",
+  BLOCKED: "danger",
+};
+
 export function inquiryTone(status: InquiryStatus): StatusTone {
   return INQUIRY_TONES[status];
 }
@@ -51,4 +59,7 @@ export function projectTone(status: ProjectStatus): StatusTone {
 }
 export function portfolioTone(status: PortfolioStatus): StatusTone {
   return PORTFOLIO_TONES[status];
+}
+export function milestoneTone(status: MilestoneStatus): StatusTone {
+  return MILESTONE_TONES[status];
 }

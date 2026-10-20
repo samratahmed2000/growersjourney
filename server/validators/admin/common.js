@@ -35,6 +35,21 @@ export const searchSchema = z
 
 export const orderSchema = z.enum(["asc", "desc"]).default("desc");
 
+/**
+ * A date-only value (`YYYY-MM-DD`) stored as UTC midnight.
+ *
+ * Using UTC midnight avoids a timezone shifting a project or milestone to the
+ * previous day. `null` explicitly clears an optional date on update.
+ */
+export const optionalDateOnlySchema = z
+  .union([z.iso.date("Please use a valid date in YYYY-MM-DD format."), z.null()])
+  .optional()
+  .transform((value) => {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    return new Date(`${value}T00:00:00.000Z`);
+  });
+
 /** Query-string booleans must be parsed explicitly; `coerce.boolean("false")` is true. */
 export const queryBooleanSchema = z
   .enum(["true", "false"])

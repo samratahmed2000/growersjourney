@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Plus } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { FilterBar, FilterActions } from "@/components/admin/filter-bar";
 import { FilterField, Input, Select } from "@/components/admin/filter-controls";
@@ -9,6 +10,7 @@ import { EmptyState } from "@/components/admin/empty-state";
 import { AdminErrorState } from "@/components/admin/error-state";
 import { PaginationBar } from "@/components/admin/pagination";
 import { StatusBadge } from "@/components/admin/status-badge";
+import { ButtonLink } from "@/components/ui/button";
 import { adminGet } from "@/lib/api/admin.server";
 import { formatDate } from "@/lib/admin/format";
 import { projectTone } from "@/lib/admin/status";
@@ -77,7 +79,13 @@ export default async function AdminProjectsPage({
       <AdminPageHeader
         eyebrow="Delivery"
         title="Projects"
-        description="Read-only project records for Task 07. Project creation, milestones, team assignment, and client portal access are not implemented."
+        description="Create projects, assign the owning client, move them through the status flow, and publish client-visible progress updates."
+        actions={
+          <ButtonLink href="/admin/projects/new">
+            <Plus aria-hidden="true" className="size-4" />
+            New project
+          </ButtonLink>
+        }
       />
 
       <FilterBar>
@@ -113,7 +121,12 @@ export default async function AdminProjectsPage({
           description={
             hasFilters
               ? "Try a different search or remove the status filter."
-              : "Project records will appear here once they exist in the database. Nothing has been fabricated."
+              : "Create a project for an active client. No sample projects are inserted."
+          }
+          action={
+            hasFilters ? undefined : (
+              <ButtonLink href="/admin/projects/new">Create the first project</ButtonLink>
+            )
           }
         />
       ) : (

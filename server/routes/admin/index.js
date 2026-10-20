@@ -47,11 +47,17 @@ export function createAdminRouter({
     createAdminClientsRouter({
       repository: repositories.clients,
       projectRepository: repositories.projects,
+      auth,
     }),
   );
   router.use(
     "/projects",
-    createAdminProjectsRouter({ repository: repositories.projects }),
+    createAdminProjectsRouter({
+      repository: repositories.projects,
+      clientRepository: repositories.clients,
+      milestoneRepository: repositories.milestones,
+      updateRepository: repositories.updates,
+    }),
   );
   router.use(
     "/services",

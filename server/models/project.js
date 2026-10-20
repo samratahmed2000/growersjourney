@@ -6,12 +6,31 @@ import {
 } from "../constants/project.js";
 
 /**
- * Project — read-only in Task 07.
+ * Project — contracted client work.
  *
- * The model exists now because the dashboard and client details need a real
- * source of project records. Project creation, milestones, memberships, and
- * portal access are deliberately out of scope until a later task.
+ * Ownership is the project's `clientId`. Portal access is granted only after a
+ * Client record is explicitly linked to a Better Auth user, so a project id
+ * alone never authorizes access.
  */
+const projectLinkSchema = new mongoose.Schema(
+  {
+    label: {
+      type: String,
+      required: true,
+      trim: true,
+      minlength: PROJECT_LIMITS.links.labelMin,
+      maxlength: PROJECT_LIMITS.links.labelMax,
+    },
+    url: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: PROJECT_LIMITS.links.urlMax,
+    },
+  },
+  { _id: false },
+);
+
 const projectSchema = new mongoose.Schema(
   {
     name: {
@@ -42,7 +61,30 @@ const projectSchema = new mongoose.Schema(
     startDate: { type: Date, default: undefined },
     dueDate: { type: Date, default: undefined },
     completedAt: { type: Date, default: undefined },
+    statusChangedAt: { type: Date, default: undefined },
+    statusChangedBy: {
+      type: String,
+      trim: true,
+      maxlength: 128,
+      default: undefined,
+    },
+    /** Client-visible external links. No file storage or embedded documents. */
+    links: {
+      type: [projectLinkSchema],
+      default: undefined,
+      validate: {
+        validator: (value) =>
+          value === undefined || value.length <= PROJECT_LIMITS.links.max,
+        message: `A project can have at most ${PROJECT_LIMITS.links.max} links.`,
+      },
+    },
     createdBy: {
+      type: String,
+      trim: true,
+      maxlength: 128,
+      default: undefined,
+    },
+    updatedBy: {
       type: String,
       trim: true,
       maxlength: 128,
@@ -56,6 +98,7 @@ const projectSchema = new mongoose.Schema(
   },
 );
 
+projectSchema.index({ clientId: 1, status: 1, updatedAt: -1 });
 projectSchema.index({ clientId: 1, updatedAt: -1 });
 projectSchema.index({ status: 1, updatedAt: -1 });
 projectSchema.index({ createdAt: -1 });

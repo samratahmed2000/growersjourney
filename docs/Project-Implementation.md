@@ -310,6 +310,24 @@ Give each client secure visibility into their own work.
 - Cross-client data access is blocked and tested.
 - Project updates and milestones display accurate server data.
 
+**Task 08 status**
+
+Implemented:
+
+- `/portal` dashboard, `/portal/projects`, and `/portal/projects/[id]` with project status, milestone timeline, safe external links, and client-visible progress updates.
+- `/portal/invoices` remains a deliberate placeholder. Invoices and payments are not implemented.
+- ADMIN project create/edit, active-client assignment, status workflow, milestone create/edit, and internal/client-visible updates, all under `/api/v1/admin`.
+- Explicit client portal linking on the client record. One linked Better Auth `CLIENT` account per client; no automatic email matching and no account invitation flow.
+- Object-level authorization in Express. Another client's project, milestone, or update returns `404`; role-only portal access returns `403 PORTAL_ACCESS_DENIED`.
+- 15 Task 08 server tests plus the existing suite: **134 tests, all passing**.
+- Client lint, typecheck, and production build pass; the build reports 41 route entries.
+
+Deliberately not implemented in Task 08:
+
+- Project memberships, team-member project access, invoice/payment features, notifications, file storage/upload, AI features, and public content migration.
+- Real MongoDB/Atlas persistence and live Better Auth records were not verified because required server environment values are not configured here.
+- Browser interaction, responsive visual checks, and screen-reader checks were not run; the client has no browser/test runner.
+
 ### Phase 9 — Invoices and Payment Integration
 
 **Objectives**

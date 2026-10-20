@@ -8,8 +8,8 @@ import {
   type AuthArea,
 } from "@/lib/auth/roles";
 import { AccessDenied, AuthError } from "./auth-states";
-import { AreaShell } from "./area-shell";
 import { AdminShell } from "@/components/admin/admin-shell";
+import { PortalShell } from "@/components/portal/portal-shell";
 
 /**
  * Server-side navigation guard for /admin and /portal.
@@ -59,9 +59,5 @@ export async function AreaGuard({
     return <AdminShell user={session.user}>{children}</AdminShell>;
   }
 
-  return (
-    <AreaShell area={area} user={session.user}>
-      {children}
-    </AreaShell>
-  );
+  return <PortalShell user={session.user}>{children}</PortalShell>;
 }

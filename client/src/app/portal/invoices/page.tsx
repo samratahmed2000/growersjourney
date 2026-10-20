@@ -11,7 +11,7 @@ export default function PortalInvoicesPage() {
     <PlaceholderPage
       area="Client portal invoices"
       title="Your invoices"
-      description="Invoice viewing is planned for a later task. Payment state will be verified on the server, never inferred from a browser redirect."
+      description="Invoice viewing and payment history are not part of this release. Payment state will always be verified on the server, never inferred from a browser redirect."
     />
   );
 }

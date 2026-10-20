@@ -463,8 +463,18 @@ require a trusted `Origin`. Responses are `Cache-Control: private, no-store`.
 | `POST`   | `/api/v1/admin/clients`                   | Implemented                    |
 | `GET`    | `/api/v1/admin/clients/:id`               | Implemented                    |
 | `PATCH`  | `/api/v1/admin/clients/:id`               | Implemented                    |
-| `GET`    | `/api/v1/admin/projects`                  | Implemented (read-only)        |
-| `GET`    | `/api/v1/admin/projects/:id`              | Implemented (read-only)        |
+| `GET`    | `/api/v1/admin/projects`                  | Implemented                    |
+| `POST`   | `/api/v1/admin/projects`                  | Implemented                    |
+| `GET`    | `/api/v1/admin/projects/:id`              | Implemented                    |
+| `PATCH`  | `/api/v1/admin/projects/:id`              | Implemented (permitted fields) |
+| `PATCH`  | `/api/v1/admin/projects/:id/status`       | Implemented (status only)      |
+| `GET`    | `/api/v1/admin/projects/:id/milestones`   | Implemented                    |
+| `POST`   | `/api/v1/admin/projects/:id/milestones`   | Implemented                    |
+| `PATCH`  | `/api/v1/admin/projects/:id/milestones/:milestoneId` | Implemented          |
+| `GET`    | `/api/v1/admin/projects/:id/updates`      | Implemented                    |
+| `POST`   | `/api/v1/admin/projects/:id/updates`      | Implemented                    |
+| `PATCH`  | `/api/v1/admin/projects/:id/updates/:updateId` | Implemented             |
+| `PATCH`  | `/api/v1/admin/clients/:id/portal-access` | Implemented                    |
 | `GET`    | `/api/v1/admin/services`                  | Implemented                    |
 | `POST`   | `/api/v1/admin/services`                  | Implemented                    |
 | `GET`    | `/api/v1/admin/services/:id`              | Implemented                    |
@@ -501,8 +511,61 @@ Clients use a unique lowercase `primaryEmail`. A duplicate returns
 grant no portal access. There is no hard-delete endpoint; the admin UI marks a
 client `INACTIVE`.
 
-Projects are read-only in Task 07. Project creation, editing, memberships,
-milestones, and project updates are **not implemented**.
+### 9.0.1 Task 08 project workflow
+
+Task 08 makes projects writable and adds milestones, progress updates, and the
+explicit client portal link. The implementation is still ADMIN-only and mounted
+under `/api/v1/admin`.
+
+Project rules:
+
+- New projects start in `PLANNING`; the caller cannot choose the initial status.
+- A project belongs to exactly one `Client` through `clientId`.
+- A project may be assigned only to an `ACTIVE` client. An existing project may
+  keep its current client if that client is later deactivated, but it cannot be
+  moved to a different inactive client (`409 CLIENT_INACTIVE`).
+- `startDate` and `dueDate` are calendar dates stored as UTC midnight. A due date
+  before the start date returns `400 VALIDATION_ERROR`.
+- Links are bounded external `http(s)` links. There is no file upload or storage.
+- There is no hard-delete endpoint. Projects are moved to `CANCELLED`, which is
+  terminal. Milestones and updates are edited, not deleted.
+
+Project status transitions:
+
+- `PLANNING` → `IN_PROGRESS`, `ON_HOLD`, `CANCELLED`
+- `IN_PROGRESS` → `ON_HOLD`, `COMPLETED`, `CANCELLED`
+- `ON_HOLD` → `IN_PROGRESS`, `CANCELLED`
+- `COMPLETED` → `IN_PROGRESS` (reopening clears `completedAt`)
+- `CANCELLED` is terminal
+
+Milestone status transitions:
+
+- `PENDING` → `IN_PROGRESS`, `COMPLETED`, `BLOCKED`
+- `IN_PROGRESS` → `PENDING`, `COMPLETED`, `BLOCKED`
+- `BLOCKED` → `PENDING`, `IN_PROGRESS`
+- `COMPLETED` → `IN_PROGRESS` (reopening clears `completedAt`)
+
+Milestone due dates must fall inside the parent project's start and due dates
+when those dates exist. Status conflicts return `409 STATUS_CHANGED`.
+
+Every project update is created with visibility `INTERNAL` unless the request
+explicitly sends `visibility: "CLIENT"`. Portal queries filter on
+`visibility: "CLIENT"` in the database query, not in the serializer.
+
+Portal access linking is explicit. `PATCH
+/api/v1/admin/clients/:id/portal-access` accepts `{ "email": "..." }` to link an
+existing `CLIENT` account, or `{ "email": null }` to unlink it. It never creates,
+invites, or impersonates an account, and an email match at login never grants
+access. A user can be linked to only one client record:
+
+- no account with that email → `404 PORTAL_USER_NOT_FOUND`
+- account is not a `CLIENT` → `409 PORTAL_USER_NOT_CLIENT`
+- account is banned → `409 PORTAL_USER_BANNED`
+- account already linked to another client → `409 PORTAL_USER_ALREADY_LINKED`
+
+Not implemented in Task 08: project memberships, milestone/update deletion,
+invoices, payments, notifications, time tracking, file storage, team management,
+and automatic client-account provisioning.
 
 Services and portfolio entries use immutable slugs. `DELETE` archives rather
 than destroys: it sets `isArchived`, unpublishes, and (for portfolio) removes
@@ -549,6 +612,7 @@ Rules:
 | `POST`   | `/admin/clients`     | Create a client                          |
 | `GET`    | `/admin/clients/:id` | Get client details                       |
 | `PATCH`  | `/admin/clients/:id` | Update client details                    |
+| `PATCH`  | `/admin/clients/:id/portal-access` | Link or unlink an existing CLIENT account |
 | `DELETE` | `/admin/clients/:id` | Deactivate or delete according to policy |
 
 Before creating a client from a converted inquiry, prevent accidental duplicate conversion.
@@ -557,55 +621,54 @@ Do not automatically grant portal access when a client record is created. Accoun
 
 ### 9.3 Projects
 
-| Method   | Endpoint              | Purpose                               |
-| -------- | --------------------- | ------------------------------------- |
-| `GET`    | `/admin/projects`     | List projects                         |
-| `POST`   | `/admin/projects`     | Create a project                      |
-| `GET`    | `/admin/projects/:id` | View project details                  |
-| `PATCH`  | `/admin/projects/:id` | Update permitted fields               |
-| `DELETE` | `/admin/projects/:id` | Archive or delete according to policy |
+| Method   | Endpoint                          | Purpose                               |
+| -------- | --------------------------------- | ------------------------------------- |
+| `GET`    | `/admin/projects`                 | List and filter projects              |
+| `POST`   | `/admin/projects`                 | Create a project                      |
+| `GET`    | `/admin/projects/:id`             | View project details                  |
+| `PATCH`  | `/admin/projects/:id`             | Update permitted fields               |
+| `PATCH`  | `/admin/projects/:id/status`      | Change status atomically              |
 
-Rules:
-
-- Validate the client relationship.
-- Validate status transitions.
-- Validate dates and project fields.
-- Restrict changes to authorized users.
-- Preserve project history where required.
-- Validate team membership assignments.
+List filters: `page`, `limit`, `status`, `clientId`, `search`, `sort`, `order`.
+`GET` returns client summaries and milestone counts, never the raw document.
+`POST` accepts `name`, optional `description`, `clientId`, optional `startDate`,
+`dueDate`, and up to 10 `links`. `PATCH` accepts the same fields except `status`
+and `createdBy`; unknown fields are rejected. The client must exist and be
+`ACTIVE`, as described in §9.0.1. There is no `DELETE` endpoint.
 
 ### 9.4 Project Memberships
 
-| Method   | Endpoint                              | Purpose                     |
-| -------- | ------------------------------------- | --------------------------- |
-| `GET`    | `/admin/projects/:id/members`         | List project members        |
-| `POST`   | `/admin/projects/:id/members`         | Add a member                |
-| `PATCH`  | `/admin/projects/:id/members/:userId` | Change permitted membership |
-| `DELETE` | `/admin/projects/:id/members/:userId` | Remove a member             |
-
-Every membership change must verify administrator permission and create an appropriate audit event.
+Not implemented. Membership rows, team assignment, and staff project access are
+still future work. A `TEAM_MEMBER` cannot use the admin or portal project APIs
+until an explicit membership model exists.
 
 ### 9.5 Milestones
 
-| Method   | Endpoint                         | Purpose                    |
-| -------- | -------------------------------- | -------------------------- |
-| `GET`    | `/admin/projects/:id/milestones` | List milestones            |
-| `POST`   | `/admin/projects/:id/milestones` | Create milestone           |
-| `PATCH`  | `/admin/milestones/:id`          | Update milestone           |
-| `DELETE` | `/admin/milestones/:id`          | Delete when policy permits |
+| Method   | Endpoint                                       | Purpose                    |
+| -------- | ---------------------------------------------- | -------------------------- |
+| `GET`    | `/admin/projects/:id/milestones`               | List milestones            |
+| `POST`   | `/admin/projects/:id/milestones`               | Create milestone           |
+| `PATCH`  | `/admin/projects/:id/milestones/:milestoneId`  | Update milestone           |
 
-Verify the milestone's parent project before applying an operation.
+Every operation verifies the parent project first and queries the milestone by
+both `projectId` and `milestoneId`, so a milestone id from another project is a
+`404`. New milestones start as `PENDING`, receive the next `sortOrder`, and are
+bounded by the project dates. `completedAt` is derived from status and cannot be
+set directly. There is no delete endpoint.
 
 ### 9.6 Project Updates
 
-| Method   | Endpoint                      | Purpose                    |
-| -------- | ----------------------------- | -------------------------- |
-| `GET`    | `/admin/projects/:id/updates` | List updates               |
-| `POST`   | `/admin/projects/:id/updates` | Create an update           |
-| `PATCH`  | `/admin/updates/:id`          | Edit an update             |
-| `DELETE` | `/admin/updates/:id`          | Delete when policy permits |
+| Method   | Endpoint                                      | Purpose                    |
+| -------- | --------------------------------------------- | -------------------------- |
+| `GET`    | `/admin/projects/:id/updates`                 | List all updates           |
+| `POST`   | `/admin/projects/:id/updates`                 | Create an update           |
+| `PATCH`  | `/admin/projects/:id/updates/:updateId`       | Edit an update             |
 
-Only authorized users may publish client-visible updates. Internal updates must remain inaccessible to client-facing endpoints.
+Only authorized administrators may create or publish updates. New updates
+default to `INTERNAL`; `visibility` may be `INTERNAL` or `CLIENT`. The admin list
+returns both visibilities, while portal endpoints return client-visible rows
+only. Updates carry the authenticated author's id and display name. There is no
+delete endpoint.
 
 ### 9.7 Services
 
@@ -659,15 +722,47 @@ Do not calculate sensitive aggregate data from untrusted client-supplied values.
 
 Every portal endpoint must verify that the authenticated client is entitled to access the requested record.
 
+### 10.0 Task 08 implementation status
+
+The implemented portal API is mounted at `/api/v1/portal`. Every request:
+
+1. re-validates the Better Auth session (`401 UNAUTHENTICATED`),
+2. requires the exact `CLIENT` role (`403 FORBIDDEN` for staff), and
+3. requires an active `Client` record whose `userId` equals the authenticated
+   user id (`403 PORTAL_ACCESS_DENIED` otherwise).
+
+The resolved client id comes from the server-side `Client` record. A query
+parameter, body field, or route segment can never change ownership. Another
+client's project, milestone, or update returns `404 NOT_FOUND`, not `403`, so
+existence is not leaked. Responses are `Cache-Control: private, no-store`.
+`TEAM_MEMBER` has no portal project access until an explicit membership model
+exists.
+
+| Method | Endpoint                                  | Status      |
+| ------ | ----------------------------------------- | ----------- |
+| `GET`  | `/api/v1/portal/dashboard`                | Implemented |
+| `GET`  | `/api/v1/portal/projects`                 | Implemented |
+| `GET`  | `/api/v1/portal/projects/:id`             | Implemented |
+| `GET`  | `/api/v1/portal/projects/:id/milestones`  | Implemented |
+| `GET`  | `/api/v1/portal/projects/:id/updates`     | Implemented |
+| `GET`  | `/api/v1/portal/invoices`                 | Not implemented |
+
+`GET /api/v1/portal/access` remains the role-only connectivity check from Task
+06. It does not replace the linked-client check used by the feature endpoints.
+
 ### 10.1 Client Dashboard
 
 | Property | Value               |
 | -------- | ------------------- |
 | Method   | `GET`               |
 | Endpoint | `/portal/dashboard` |
-| Access   | Authorized client   |
+| Access   | Linked active client |
 
-Return a summary of the current client's projects, upcoming milestones, unpaid invoices, and notifications.
+Returns the linked client's display identity, active project count (`PLANNING`
+and `IN_PROGRESS`), upcoming milestone count, completed milestone count, active
+project summaries, recently updated project summaries, upcoming milestones, and
+recent client-visible activity. Milestone completion is shown as counts, not a
+calculated percentage. Invoices and notifications are **not** included.
 
 ### 10.2 List Projects
 
@@ -675,11 +770,12 @@ Return a summary of the current client's projects, upcoming milestones, unpaid i
 | -------- | ------------------ |
 | Method   | `GET`              |
 | Endpoint | `/portal/projects` |
-| Access   | Authorized client  |
+| Access   | Linked active client |
 
-Return only projects belonging to the authenticated client or explicitly assigned to that user under the documented access policy.
-
-Never accept an arbitrary client ID as proof of ownership.
+Accepts `page`, `limit`, and an optional `status` filter. The query is a strict
+Zod object, so an arbitrary `clientId` filter returns `400 VALIDATION_ERROR`.
+Results contain only projects whose `clientId` is the resolved client, with
+milestone counts. They never include the admin client record.
 
 ### 10.3 Project Details
 
@@ -687,21 +783,24 @@ Never accept an arbitrary client ID as proof of ownership.
 | -------- | ---------------------- |
 | Method   | `GET`                  |
 | Endpoint | `/portal/projects/:id` |
-| Access   | Authorized client      |
+| Access   | Linked active client   |
 
-Return permitted project details, milestones, and client-visible updates.
+Returns permitted project fields, milestone counts, and safe external links.
+`allowedNextStatuses`, workflow metadata, author ids, and internal notes are
+excluded. A project owned by another client returns `404 NOT_FOUND`.
 
-Exclude internal notes, private team information, and unauthorized documents.
+### 10.4 Project Updates and Milestones
 
-### 10.4 Project Updates
+| Method | Endpoint                                  | Purpose                    |
+| ------ | ----------------------------------------- | -------------------------- |
+| `GET`  | `/portal/projects/:id/milestones`         | Ordered delivery milestones |
+| `GET`  | `/portal/projects/:id/updates`            | Client-visible updates      |
 
-| Property | Value                          |
-| -------- | ------------------------------ |
-| Method   | `GET`                          |
-| Endpoint | `/portal/projects/:id/updates` |
-| Access   | Authorized client              |
-
-Return client-visible updates only.
+Milestones are returned in `sortOrder` then due-date order, with their status,
+due date, and completion date. Portal milestones do not expose allowed status
+transitions. Updates are filtered to `visibility: "CLIENT"` in the database
+query; internal updates never reach the serializer. Both endpoints verify
+project ownership first and return `404` for a cross-client project.
 
 ### 10.5 Client Invoices
 
