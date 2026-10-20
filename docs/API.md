@@ -385,44 +385,60 @@ Rate limiting and abuse protection (implemented in Task 05):
 
 ## 8. Authentication APIs
 
-Authentication routes must follow the actual Better Auth integration and its documented endpoint conventions.
+Authentication uses the installed Better Auth version (`better-auth@1.7.11`) with the official `@better-auth/mongo-adapter@1.7.11`. Custom password, session, and token endpoints are **not** implemented; Better Auth's documented endpoints own those flows.
 
-Do not invent custom password, session, or token endpoints that duplicate Better Auth.
+### 8.1 Integration facts
 
-Before implementation, document:
+- **Where it runs:** Better Auth runs in the Express server (`server/auth/create-auth.js`). Next.js never issues or validates a session.
+- **Session validation:** Express calls `auth.api.getSession({ headers: fromNodeHeaders(req.headers) })` on every protected request. The lookup is database-backed, so expiry and logout are immediate.
+- **Browser path:** the browser calls same-origin `/api/auth/*`. `client/next.config.ts` rewrites that path to the Express auth handler. This keeps the host-only session cookie on the site origin and avoids a cross-domain cookie.
+- **Adapter:** `mongodbAdapter(db, { client })`, using the `Db` and `MongoClient` from the existing Mongoose connection. `MONGODB_TRANSACTIONS` controls adapter transactions (default `true`; set `false` for a standalone local MongoDB).
+- **Cookies:** `HttpOnly`, `SameSite=Lax`, `Path=/`, host-only, prefix `gj`. `Secure` and the `__Secure-` prefix are used when `BETTER_AUTH_URL` is HTTPS. The session is an absolute 7 days (`Max-Age=604800`) with refresh disabled and no cookie cache.
+- **CSRF:** Better Auth's Origin + Fetch-Metadata checks stay enabled. A sign-in or sign-out with `Origin: https://evil.example` returns `403 INVALID_ORIGIN`. `requireTrustedOrigin` is exported for future state-changing API endpoints.
+- **Rate limiting:** Better Auth limits `/sign-in/email` to 5 requests per 60 seconds per client IP by default. `express-rate-limit` continues to protect `POST /api/v1/inquiries`.
+- **Trusted origins:** exactly the comma-separated origins in `FRONTEND_URL`. Wildcards are not used.
+- **Provisioning:** `npm run create-admin` in `server/` calls `auth.api.createUser` with `role: ADMIN`. There is no public sign-up (`emailAndPassword.disableSignUp: true`), and the role field is not writable through the public profile API.
+- **Roles:** `ADMIN`, `TEAM_MEMBER`, `CLIENT`. A missing or unknown role is denied, not defaulted.
 
-- The authentication server location.
-- The supported Better Auth adapter.
-- The session validation method used by Express.
-- Cookie and CSRF requirements.
-- The permitted frontend origins.
-- The secure initial-admin provisioning process.
+### 8.2 Better Auth endpoints
 
-If custom profile endpoints are required, use the following contract.
+These are implemented by Better Auth and are not duplicated by this project. Paths are relative to the site origin; Next rewrites them to Express.
 
-### 8.1 Get Current User
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/auth/sign-in/email` | Email + password sign-in; sets the session cookie |
+| `POST` | `/api/auth/sign-out` | Revokes the session and clears the cookie |
+| `GET` | `/api/auth/get-session` | Better Auth session payload |
+| `POST` | `/api/auth/sign-up/email` | Disabled; returns `EMAIL_PASSWORD_SIGN_UP_DISABLED` |
 
-| Property | Value         |
-| -------- | ------------- |
-| Method   | `GET`         |
-| Endpoint | `/me`         |
-| Access   | Authenticated |
+Sign-in and `get-session` responses include a session token in JSON. The application deliberately ignores it and never stores it. The browser session lives only in the `HttpOnly` cookie.
 
-Returns the current user's safe profile and effective application role.
+### 8.3 Get Current User
 
-Never return password hashes, session secrets, or private authentication-provider records.
+| Property | Value |
+| --- | --- |
+| Method | `GET` |
+| Full endpoint | `/api/v1/auth/me` |
+| Access | Authenticated |
+| Success | `{ success: true, data: { user: { id, email, name, role }, session: { expiresAt } } }` |
 
-### 8.2 Update Current Profile
+Returns only the safe profile. It never returns the session token, password hash, account row, or provider data. A missing, malformed, expired, or revoked cookie returns `401 UNAUTHENTICATED`. A valid account with a missing/unknown role returns `403 FORBIDDEN`.
 
-| Property | Value         |
-| -------- | ------------- |
-| Method   | `PATCH`       |
-| Endpoint | `/me`         |
-| Access   | Authenticated |
+The Next.js protected layouts use this endpoint server-side, forwarding the browser cookie. They do not verify the session themselves.
 
-Allow only explicitly permitted profile fields, such as a validated display name.
+### 8.4 Area access checks
 
-Do not accept role changes, account ownership changes, or administrative permissions through this endpoint.
+| Property | Value |
+| --- | --- |
+| Methods | `GET` |
+| Endpoints | `/api/v1/admin/access`, `/api/v1/portal/access` |
+| Access | `ADMIN`/`TEAM_MEMBER` for admin; `CLIENT` for portal |
+
+These endpoints exist to make the role boundary testable and to give future frontends one explicit check. They return `{ area, role }` on success and `403 FORBIDDEN` for the wrong role. Staff do not receive implicit portal access.
+
+### 8.5 Update Current Profile
+
+Not implemented in this phase. When it is added, allow only explicitly permitted fields such as a validated display name. Never accept role changes, ownership changes, or administrative permissions through a profile endpoint.
 
 ---
 

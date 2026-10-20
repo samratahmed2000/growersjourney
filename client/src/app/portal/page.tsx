@@ -11,7 +11,7 @@ export default function PortalDashboardPage() {
     <PlaceholderPage
       area="Client portal"
       title="Portal dashboard"
-      description="The client portal is planned for a later task, after authentication is in place. Nothing here is reachable by visitors yet."
+      description="Authentication is now enforced for this area. The portal features themselves are planned for a later task, so there is no project or invoice data here yet."
     />
   );
 }

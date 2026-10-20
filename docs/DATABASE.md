@@ -89,7 +89,16 @@ Example:
 | `auditevents`           | Important administrative actions                   | Early security milestone            |
 | `aiusagerecords`        | AI usage and cost metadata                         | When AI features launch             |
 
-Names above describe the intended logical collections. Authentication collection names and fields must follow the official Better Auth adapter configuration.
+Names above describe the intended logical collections. Authentication collection names and fields follow the official Better Auth MongoDB adapter configuration. With `better-auth@1.7.11` and `@better-auth/mongo-adapter@1.7.11` the defaults are:
+
+| Collection | Purpose |
+| --- | --- |
+| `user` | Identity: id, name, email, emailVerified, image, role, banned, timestamps |
+| `session` | Active sessions: token, expiry, IP/user-agent, user reference |
+| `account` | Credential records: provider id, scrypt password hash, provider account id |
+| `verification` | Short-lived verification/reset tokens (unused until email delivery exists) |
+
+These are separate from the application's future `clients`/`projects`/`invoices` collections. The authentication adapter owns their schema; do not add Mongoose models for them or edit password hashes by hand.
 
 ---
 
@@ -97,7 +106,13 @@ Names above describe the intended logical collections. Authentication collection
 
 The application may need a user profile model separate from authentication records.
 
-### Suggested fields
+### Implemented now
+
+Better Auth's `user` collection is the authoritative source for `id`, `name`, `email`, and `role`. Roles are the exact strings `ADMIN`, `TEAM_MEMBER`, and `CLIENT` in the admin-plugin `role` field. Password hashes live only in `account.password` (scrypt, salted) and are never copied elsewhere.
+
+There is no separate `users` profile collection yet. Adding one later should reference the Better Auth user id and must not duplicate the email, password, session, or role as competing sources of truth. If a display name or avatar is needed, prefer Better Auth's `user` fields; if business-specific profile data is needed, store it in a `clientProfiles`/`teamProfiles`-style collection keyed by the auth user id.
+
+### Suggested future fields
 
 ```ts
 type UserRole = "ADMIN" | "TEAM_MEMBER" | "CLIENT";

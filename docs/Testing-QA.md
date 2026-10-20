@@ -205,9 +205,24 @@ Use a test database or isolated test collections. Never run destructive test cas
 | `inquiry-validation.test.js` | strict schema: email/URL normalization, blank optionals, service allowlist, length limits, unknown keys |
 | `inquiry-model.test.js`      | offline Mongoose validation: collection name, timestamps, default `NEW`, email lower-casing, blank optionals, required fields, enums, limits |
 
-These tests never open a MongoDB connection and never touch real data — they start the app on an ephemeral port. With Task 05 they also cover item 1 (a valid inquiry) and item 9 (the inquiry rate limit), using an injected repository. Item 4 (authentication) is still unimplemented, item 5 (authorization) needs authenticated routes, and item 10 (unauthorized data exposure) will be exercised when the admin API exists.
+These tests never open a MongoDB connection and never touch real data — they start the app on an ephemeral port. With Task 05 they also cover item 1 (a valid inquiry) and item 9 (the inquiry rate limit), using an injected repository. With Task 06 they cover item 4 (authentication), item 5 (authorization), and item 10 (unauthorized data exposure at the role and object-helper level), using Better Auth's official in-memory adapter and injected fake resources. The admin dashboard API does not exist yet, so there is no live admin data endpoint to exercise.
 
-What is **not** automated: the actual `Inquiry.create()` write to MongoDB. There is no test database and no in-memory MongoDB dependency. Verify it manually against a development database, never against production data.
+Task 06 test files:
+
+| File | Coverage |
+| --- | --- |
+| `auth.test.js` | public sign-up disabled; valid sign-in; safe `/auth/me`; wrong password vs unknown email (same generic error); missing/malformed/expired session; logout revocation; cross-site sign-in and sign-out CSRF; repeated failed sign-ins → `429`; unknown role fails closed; public health/inquiry routes stay public; session identity cannot be spoofed with headers |
+| `auth-config.test.js` | passwords stored as salted scrypt hashes, never plaintext; fixed 7-day cookie with `HttpOnly`/`SameSite=Lax`/`Path=/`; production `Secure` + `__Secure-` cookie; unknown role rejected by `createUser`; default role is `CLIENT`; `createAuth` rejects missing DB, short secret, invalid URL, invalid rate-limit values |
+| `authorization.test.js` | ADMIN/TEAM_MEMBER/CLIENT access matrix for `/admin/access` and `/portal/access`; all protected endpoints reject anonymous callers; client cannot spoof admin via headers or query; query-level scoping; Client A vs Client B object access → `404`; staff do not get implicit ownership; role helpers fail closed; safe user projection strips secrets; `requireRole` and `requireTrustedOrigin` unit behavior |
+
+Current result: **100/100 server tests pass** (`npm test` from `server/`). This includes the 70 tests from Tasks 03–05 and 30 new Task 06 tests.
+
+What is **not** automated:
+
+- The actual `Inquiry.create()` write to MongoDB. There is no test database and no in-memory MongoDB dependency. Verify it manually against a development database, never against production data.
+- A real MongoDB connection, real Better Auth persistence, and `scripts/create-admin.js` against Atlas. Use a development database and verify the `user`/`account`/`session` collections manually.
+- Browser behaviour of the login form, cookie persistence through the Next rewrite, screen-reader announcements, and visual states. A live smoke test against `next start` + a memory-adapter Express server was run manually during Task 06; results are recorded in the implementation report, not in CI.
+- Real HTTPS cookie behavior. `Secure`/`__Secure-` were verified by inspecting the `Set-Cookie` header from a `useSecureCookies: true` instance, not from an HTTPS deployment.
 
 ### Frontend contact form (manual)
 
@@ -246,6 +261,30 @@ Verify that:
 - Logout and session invalidation behave as intended.
 - Authentication cookies use appropriate security settings.
 - Backend endpoints independently enforce authorization.
+
+### Task 06 automated result
+
+The server test suite runs without MongoDB by injecting Better Auth's official in-memory adapter. The role matrix currently enforced is:
+
+| Caller | `/api/v1/admin/access` | `/api/v1/portal/access` |
+| --- | --- | --- |
+| Anonymous / invalid cookie | `401 UNAUTHENTICATED` | `401 UNAUTHENTICATED` |
+| `ADMIN` | `200` | `403 FORBIDDEN` |
+| `TEAM_MEMBER` | `200` | `403 FORBIDDEN` |
+| `CLIENT` | `403 FORBIDDEN` | `200` |
+| Unknown role in DB | `403 FORBIDDEN` | `403 FORBIDDEN` |
+
+Additional verified behaviour:
+
+- A cookie from one client cannot be turned into another identity with `x-user-id`, `x-user-role`, or query parameters.
+- Logout deletes the session row; the old cookie gets `401`.
+- Moving a stored session's `expiresAt` into the past gets `401`.
+- A sign-in or sign-out with a foreign `Origin` gets `403 INVALID_ORIGIN`.
+- Repeated failed sign-ins get `429`, including a later correct password while the bucket is exhausted.
+- Passwords are salted scrypt hashes in `account.password`; the `user` row has no password field.
+- A default-role user is `CLIENT`, never `ADMIN`.
+
+The object-level pattern is unit-tested with fake project/invoice records. It is not yet wired to real project or invoice routes, because those features are out of scope. When they are added, every query must include `ownedByQuery(req.auth.user)` and every loaded record must pass `assertResourceOwner(...)`.
 
 ### Object-level authorization
 

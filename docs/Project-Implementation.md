@@ -214,6 +214,22 @@ Do not assume that a protected Next.js page secures the API behind it. Verify ho
 - Clients can access only records they are authorized to view.
 - Users cannot elevate their own roles.
 
+**Task 06 status**
+
+Implemented and verified:
+
+- Better Auth 1.7.11 in Express, MongoDB adapter, fixed 7-day HttpOnly/SameSite cookie, secure cookie on HTTPS, origin CSRF checks, sign-in rate limiting, and logout revocation.
+- Roles `ADMIN`, `TEAM_MEMBER`, `CLIENT`; protected `/api/v1/auth/me`, `/api/v1/admin/access`, and `/api/v1/portal/access`; default-deny for unknown roles.
+- Secure first-admin provisioning (`npm run create-admin`), public sign-up disabled, role field not writable by clients.
+- Protected Next.js `/admin` and `/portal` layouts with loading, unauthenticated redirect, and forbidden states.
+- 100/100 server tests, plus a live rewrite smoke test.
+
+Partially verified or deferred:
+
+- Object-level isolation helpers (`ownedByQuery`, `assertResourceOwner`) are implemented and unit-tested, but no project/invoice routes exist yet, so the "clients see only their records" gate will be fully exercised in Phase 7/8.
+- Real MongoDB persistence, `create-admin` against Atlas, and HTTPS secure-cookie behavior were not verified in this environment.
+- Password reset, email verification, and invitation flows are deferred with email delivery.
+
 ### Phase 7 — Admin Dashboard
 
 **Objectives**

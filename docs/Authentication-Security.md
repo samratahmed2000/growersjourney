@@ -78,6 +78,43 @@ Do not assume Better Auth automatically integrates with arbitrary Mongoose model
 
 If the selected database or integration is unsupported, stop and propose a compatible architecture before implementing a workaround.
 
+### Implemented integration (Task 06)
+
+The following arrangement was verified against the installed versions and is the current implementation. It supersedes the earlier "planned" wording for this phase.
+
+| Question | Answer |
+| --- | --- |
+| Where does Better Auth run? | In the **Express server** (`server/auth/create-auth.js`). Next.js does not create or validate sessions. |
+| How does Express validate a session? | `auth.api.getSession({ headers: fromNodeHeaders(req.headers) })` for every protected request, via `server/middleware/auth.js`. It is a database-backed lookup, so logout and expiry take effect immediately. |
+| Which adapter? | `@better-auth/mongo-adapter` (official MongoDB driver adapter) with six collections: `user`, `session`, `account`, `verification`, plus optional `rateLimit`/`jwks` rows if those features are enabled. It receives the `Db` from the existing Mongoose connection, so there is one pool. |
+| How is the cookie shared safely? | The browser calls same-origin `/api/auth/*` on the Next.js site. `client/next.config.ts` rewrites that path to Express. The cookie is host-only on the site origin, `Path=/`, and is never placed in browser storage. |
+| What are the cookie and CSRF settings? | `HttpOnly`, `SameSite=Lax`, `Secure` (and the `__Secure-` prefix) whenever the public auth URL is HTTPS, `Path=/`, prefix `gj`. Better Auth's Origin + Fetch-Metadata CSRF checks stay enabled; `requireTrustedOrigin` is provided for future API writes. |
+| Which origins are trusted? | Exactly the origins in `FRONTEND_URL` (comma-separated). No wildcard. |
+| How is the first administrator created? | `npm run create-admin` in `server/`, using `auth.api.createUser` with the role hard-coded to `ADMIN`. It requires server-side environment variables and refuses to add a second admin unless `ALLOW_ADDITIONAL_ADMIN=true`. |
+
+Roles are stored as the exact strings `ADMIN`, `TEAM_MEMBER`, and `CLIENT` in Better Auth's admin-plugin `role` field. Unknown or missing roles are denied, never defaulted. The admin plugin marks the role field `input: false`, so the public profile update endpoint cannot set it; a direct test confirms a `CLIENT` update with `role: "ADMIN"` is rejected with `FIELD_NOT_ALLOWED`. The admin plugin's `/admin/set-role` endpoint returns `403` for a client session.
+
+The admin area accepts `ADMIN` and `TEAM_MEMBER`; the portal accepts `CLIENT` only. Staff do **not** receive implicit portal access, and `assertResourceOwner` does not grant staff implicit ownership of client records. A future support-access feature must add an explicit, audited membership check.
+
+Protected endpoints implemented in this phase:
+
+| Full path | Access | Purpose |
+| --- | --- | --- |
+| `GET /api/v1/auth/me` | Authenticated | Safe profile: id, email, name, role, session expiry. Never a token or password. |
+| `GET /api/v1/admin/access` | ADMIN, TEAM_MEMBER | Proves the admin role check. |
+| `GET /api/v1/portal/access` | CLIENT | Proves the client role check and denies staff. |
+
+Public routes (`/api/v1/health`, `/api/v1/health/ready`, `POST /api/v1/inquiries`, `GET /`) remain unauthenticated.
+
+**Not implemented in this phase:** password reset/recovery (requires email delivery, which is out of scope), email verification, client/team invitation UI, and any dashboard, project, or invoice feature. There is no public sign-up endpoint (`emailAndPassword.disableSignUp: true`).
+
+**Residual risks and unverified items:**
+
+- Better Auth's sign-in and `get-session` JSON include the session token even though the cookie is `HttpOnly`. Same-origin JavaScript can still call `/api/auth/get-session`. The mitigation is that no code stores or uses that token, and the app ships no third-party scripts; a strict CSP was not added in this phase because Next's inline bootstrap scripts require a nonce setup. Treat any XSS on the auth origin as session-compromising.
+- Production `Secure`/`__Secure-` cookie behavior was verified by inspecting the `Set-Cookie` header from a config with `useSecureCookies: true`; it was not verified in a real HTTPS deployment.
+- Real MongoDB persistence and `create-admin` against Atlas remain unverified in this environment because no `MONGODB_URI` is configured locally.
+- Browser interaction, screen-reader output, and visual regression were not automated; there is no client test runner or browser automation installed.
+
 ## 5. Session Security
 
 Use the authentication library's supported session-management mechanisms.

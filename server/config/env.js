@@ -18,6 +18,10 @@ import "dotenv/config";
 const DEFAULT_PORT = 5000;
 const DEFAULT_FRONTEND_URL = "http://localhost:3000";
 
+/** Declared early because authentication validation depends on it. */
+const nodeEnv = process.env.NODE_ENV || "development";
+const isProduction = nodeEnv === "production";
+
 const problems = [];
 
 /** Print safe, actionable messages and stop the process. */
@@ -68,6 +72,77 @@ if (!mongodbUri) {
 }
 
 // ---------------------------------------------------------------------------
+// MONGODB_TRANSACTIONS — optional, defaults to true.
+//
+// Better Auth's MongoDB adapter can wrap multi-document writes in a
+// transaction. Atlas replica sets support this. A standalone local `mongod`
+// does not, so set MONGODB_TRANSACTIONS=false in that one case.
+// ---------------------------------------------------------------------------
+const rawMongoTransactions = (process.env.MONGODB_TRANSACTIONS ?? "")
+  .trim()
+  .toLowerCase();
+let mongodbTransactions = true;
+
+if (rawMongoTransactions && !["true", "false"].includes(rawMongoTransactions)) {
+  problems.push("MONGODB_TRANSACTIONS must be true or false.");
+} else if (rawMongoTransactions === "false") {
+  mongodbTransactions = false;
+}
+
+// ---------------------------------------------------------------------------
+// BETTER_AUTH_SECRET — required. Never printed, never sent to the frontend.
+//
+// This is the key Better Auth uses to sign session cookies and encrypt
+// verification data. A short or guessable value would let an attacker forge a
+// session, so a hard minimum is enforced here as well as in createAuth().
+// Generate one with: openssl rand -base64 32
+// ---------------------------------------------------------------------------
+const betterAuthSecret = (process.env.BETTER_AUTH_SECRET ?? "").trim();
+
+if (!betterAuthSecret) {
+  problems.push(
+    "BETTER_AUTH_SECRET is missing. Generate one with `openssl rand -base64 32`.",
+  );
+} else if (betterAuthSecret.length < 32) {
+  problems.push("BETTER_AUTH_SECRET must be at least 32 characters long.");
+}
+
+// ---------------------------------------------------------------------------
+// BETTER_AUTH_URL — required. The PUBLIC FRONTEND origin, not the API origin.
+//
+// The browser talks to /api/auth on the Next.js origin, which rewrites to this
+// Express server. Better Auth uses this value for links and for deciding
+// whether cookies need the Secure attribute, so it must match what the browser
+// actually sees. HTTPS is required in production.
+// ---------------------------------------------------------------------------
+const rawBetterAuthUrl = (process.env.BETTER_AUTH_URL ?? "").trim();
+let betterAuthUrl = "";
+
+if (!rawBetterAuthUrl) {
+  problems.push(
+    "BETTER_AUTH_URL is missing. Set it to the public frontend origin, for example http://localhost:3000.",
+  );
+} else {
+  try {
+    const parsed = new URL(rawBetterAuthUrl);
+
+    if (!/^https?:$/.test(parsed.protocol)) {
+      problems.push("BETTER_AUTH_URL must use http:// or https://.");
+    } else if (isProduction && parsed.protocol !== "https:") {
+      problems.push("BETTER_AUTH_URL must use https:// in production.");
+    } else {
+      // Keep the origin (and any deliberate path prefix), but drop a trailing
+      // slash so URL construction is predictable.
+      betterAuthUrl = parsed.href.replace(/\/+$/, "");
+    }
+  } catch {
+    problems.push(
+      "BETTER_AUTH_URL could not be parsed. Use an absolute URL such as https://growersjourny.com.",
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // PORT — optional, must be a valid port number when provided.
 // ---------------------------------------------------------------------------
 const rawPort = (process.env.PORT ?? "").trim();
@@ -83,15 +158,57 @@ if (rawPort) {
 }
 
 // ---------------------------------------------------------------------------
-// FRONTEND_URL — optional, used as the CORS allowlist.
+// FRONTEND_URL — optional, used as the CORS and Better Auth origin allowlist.
+//
+// Each entry must be an exact origin (scheme + host + optional port). A path,
+// query, fragment, credentials, or wildcard is rejected: the value is compared
+// literally against the browser's Origin header, so a malformed entry would
+// silently fail to match instead of allowing the intended site.
 // ---------------------------------------------------------------------------
-const frontendUrls = (process.env.FRONTEND_URL || DEFAULT_FRONTEND_URL)
+const rawFrontendUrls = (process.env.FRONTEND_URL || DEFAULT_FRONTEND_URL)
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-if (frontendUrls.length === 0) {
+const frontendUrls = [];
+
+if (rawFrontendUrls.length === 0) {
   problems.push("FRONTEND_URL must contain at least one frontend origin.");
+}
+
+for (const rawOrigin of rawFrontendUrls) {
+  if (rawOrigin === "*") {
+    problems.push('FRONTEND_URL must not contain "*"; list exact origins instead.');
+    continue;
+  }
+
+  try {
+    const parsed = new URL(rawOrigin);
+
+    if (!/^https?:$/.test(parsed.protocol)) {
+      problems.push("FRONTEND_URL entries must use http:// or https://.");
+      continue;
+    }
+
+    if (
+      parsed.username ||
+      parsed.password ||
+      parsed.pathname !== "/" ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      problems.push(
+        "FRONTEND_URL entries must be origins only, for example https://growersjourny.com.",
+      );
+      continue;
+    }
+
+    frontendUrls.push(parsed.origin);
+  } catch {
+    problems.push(
+      "FRONTEND_URL contains an entry that is not a valid absolute URL.",
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -125,8 +242,6 @@ if (rawTrustProxy && rawTrustProxy.toLowerCase() !== "false") {
   }
 }
 
-const nodeEnv = process.env.NODE_ENV || "development";
-
 if (problems.length > 0) {
   fail(problems);
 }
@@ -134,10 +249,13 @@ if (problems.length > 0) {
 /** Frozen, validated configuration. Import this instead of reading process.env. */
 export const env = Object.freeze({
   nodeEnv,
-  isProduction: nodeEnv === "production",
+  isProduction,
   port,
   frontendUrls,
   trustProxy,
   mongodbUri,
   databaseName,
+  mongodbTransactions,
+  betterAuthSecret,
+  betterAuthUrl,
 });

@@ -529,7 +529,33 @@ Protected Resource
 
 The implementation must establish one clear, trusted session-validation mechanism.
 
-If official integration requires a different deployment arrangement, update the architecture before writing authentication code.
+### Implemented boundary (Task 06)
+
+```text
+Browser
+  |  same-origin POST /api/auth/*
+  v
+Next.js rewrite (next.config.ts)
+  |
+  v
+Express: Better Auth handler at /api/auth/*
+  |
+  v
+@better-auth/mongo-adapter -> MongoDB (user, session, account, verification)
+  ^
+  |  auth.api.getSession({ headers })
+  |
+Express: requireAuth / requireRole -> /api/v1 protected route
+```
+
+- Better Auth runs only in Express. Next.js forwards the auth path and, for protected layouts, calls `GET /api/v1/auth/me` server-side with the browser cookie. Next does not verify signatures.
+- The cookie is host-only on the site origin (`Path=/`, `HttpOnly`, `SameSite=Lax`, `Secure` on HTTPS), so the same-origin rewrite is what makes the browser session work without exposing it to browser storage.
+- Every protected Express request is validated independently of Next navigation. The Next layouts are a usability guard, not the security boundary.
+- Admin and portal areas are separate: `ADMIN`/`TEAM_MEMBER` for `/admin`, `CLIENT` for `/portal`. Staff do not get implicit portal access.
+- `server/auth/access-control.js` provides the object-level pattern: `ownedByQuery(user)` for query scoping and `assertResourceOwner({ user, resource })` for loaded records. Cross-client access returns `404` so existence is not leaked. Staff ownership requires a separate explicit grant.
+- The secure initial administrator is created by `server/scripts/create-admin.js` through `auth.api.createUser`; there is no public sign-up and no writable role field.
+
+If official integration requires a different deployment arrangement, update this architecture before changing the code.
 
 ### Roles
 

@@ -1,24 +1,27 @@
 import { env } from "./config/env.js";
-import { connectDatabase, disconnectDatabase } from "./config/database.js";
+import {
+  connectDatabase,
+  disconnectDatabase,
+  getMongoClient,
+  getMongoDatabase,
+} from "./config/database.js";
 import { createApp } from "./app.js";
+import { createAuth } from "./auth/create-auth.js";
 
 /**
  * Process bootstrap.
  *
  * This file owns process-level concerns only: configuration, the database
- * connection, listening, and shutdown. The HTTP application itself is built by
- * `createApp()` in ./app.js, which keeps it testable without a database.
+ * connection, authentication initialization, listening, and shutdown. The HTTP
+ * application itself is built by `createApp()` in ./app.js, which keeps it
+ * testable without a database.
  *
  * Startup order matters: configuration is validated on import (see
- * config/env.js), then the database is connected, and only after that does the
- * server start accepting requests. If MongoDB cannot be reached, the process
- * exits with code 1 rather than serving traffic against a missing database.
+ * config/env.js), then MongoDB is connected, then Better Auth is created against
+ * the already-open connection, and only after that does the server accept
+ * requests. If any step fails, the process exits with code 1 rather than serving
+ * traffic against a half-configured system.
  */
-
-const app = createApp({
-  allowedOrigins: env.frontendUrls,
-  trustProxy: env.trustProxy,
-});
 
 // ---------------------------------------------------------------------------
 // Connect before listening. Fail fast and clearly if the database is down.
@@ -35,6 +38,46 @@ try {
   );
   process.exit(1);
 }
+
+// ---------------------------------------------------------------------------
+// Better Auth uses the official MongoDB driver adapter against the same
+// connection pool. Creating it after the connection means the adapter receives
+// a real Db, not a promise.
+// ---------------------------------------------------------------------------
+let auth;
+
+try {
+  const db = getMongoDatabase();
+
+  if (!db) {
+    throw new Error("MongoDB connection is not ready");
+  }
+
+  auth = createAuth({
+    db,
+    client: getMongoClient(),
+    transaction: env.mongodbTransactions,
+    secret: env.betterAuthSecret,
+    baseURL: env.betterAuthUrl,
+    trustedOrigins: env.frontendUrls,
+    useSecureCookies: env.betterAuthUrl.startsWith("https://"),
+  });
+} catch (error) {
+  // Never print the secret or the connection string. The error name is enough
+  // for an operator to know this is an auth configuration problem.
+  console.error(
+    `[auth] Could not initialize authentication (${error?.name ?? "Error"}). ` +
+      "Check BETTER_AUTH_SECRET, BETTER_AUTH_URL, and MONGODB_TRANSACTIONS in server/.env.",
+  );
+  await disconnectDatabase();
+  process.exit(1);
+}
+
+const app = createApp({
+  allowedOrigins: env.frontendUrls,
+  trustProxy: env.trustProxy,
+  auth,
+});
 
 const server = app.listen(env.port, () => {
   console.log(`server is running at ${env.port}`);

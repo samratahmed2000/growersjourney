@@ -1,12 +1,18 @@
 import type { ReactNode } from "react";
+import { AreaGuard } from "@/components/auth/area-guard";
 
 /**
  * Admin area shell.
  *
- * Intentionally minimal: there is no authentication, navigation, or data layer
- * yet, and building them now would mean exposing an unauthenticated admin
- * surface. The real dashboard is a later task.
+ * `instant = false` opts this route out of instant-navigation validation and
+ * allows the guard to block on the session read. That matters for security UX:
+ * an anonymous visit gets a real redirect to /login instead of a streamed shell
+ * with a client-side redirect. The API remains the actual security boundary.
+ *
+ * The dashboard features themselves are a later task.
  */
+export const instant = false;
+
 export default function AdminLayout({ children }: { children: ReactNode }) {
-  return <div className="min-h-screen bg-canvas">{children}</div>;
+  return <AreaGuard area="admin">{children}</AreaGuard>;
 }

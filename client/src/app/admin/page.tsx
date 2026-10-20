@@ -11,7 +11,7 @@ export default function AdminDashboardPage() {
     <PlaceholderPage
       area="Admin dashboard"
       title="Admin dashboard"
-      description="The admin dashboard is planned for a later task, after authentication and the data layer exist. It is deliberately not accessible or linked yet."
+      description="Authentication is now enforced for this area. The dashboard features themselves are planned for a later task, so there is no data or management UI here yet."
     />
   );
 }

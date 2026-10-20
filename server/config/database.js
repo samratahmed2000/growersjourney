@@ -38,6 +38,32 @@ export function getDatabaseName() {
   return mongoose.connection.name || null;
 }
 
+/**
+ * The underlying MongoDB driver client.
+ *
+ * The official Better Auth MongoDB adapter needs a driver `Db` (and optionally
+ * the client for transactions). Handing it the connection that Mongoose already
+ * owns keeps one connection pool instead of opening a second one.
+ *
+ * Returns null until `connectDatabase()` has succeeded.
+ */
+export function getMongoClient() {
+  if (typeof mongoose.connection.getClient !== "function") {
+    return null;
+  }
+
+  try {
+    return mongoose.connection.getClient() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** The driver `Db` for the active connection, or null before connecting. */
+export function getMongoDatabase() {
+  return mongoose.connection.db ?? null;
+}
+
 let listenersRegistered = false;
 
 function registerConnectionListeners() {

@@ -209,10 +209,22 @@ Create a template similar to the following and adapt it to the implemented confi
 NODE_ENV=development
 PORT=5000
 MONGODB_URI=
-APP_ORIGIN=http://localhost:3000
+MONGODB_TRANSACTIONS=true
+FRONTEND_URL=http://localhost:3000
+BETTER_AUTH_SECRET=
+BETTER_AUTH_URL=http://localhost:3000
+TRUST_PROXY=false
 ```
 
-Additional variables may be required for authentication, email, payment, AI, and logging integrations.
+Notes:
+
+- `MONGODB_URI` must include the database name before `?`.
+- `BETTER_AUTH_SECRET` is server-only, at least 32 characters. Generate it with `openssl rand -base64 32`. Never reuse it across environments.
+- `BETTER_AUTH_URL` is the **public frontend origin**, not the API port. The Next.js rewrite sends `/api/auth/*` to Express.
+- `MONGODB_TRANSACTIONS=false` only for a standalone local MongoDB; Atlas supports transactions.
+- `TRUST_PROXY` is `false` directly, or the number of proxy hops you control. `true` is rejected.
+
+Additional variables will be required for email, payment, AI, and logging integrations.
 
 Document every required variable in the backend's environment template without adding real credentials.
 
@@ -227,21 +239,32 @@ Document every required variable in the backend's environment template without a
 
 ## 9. Configure Authentication
 
-Better Auth is the planned authentication solution, but its compatibility with the selected database and the separate Express API must be verified before implementation.
+Better Auth **1.7.11** is installed and runs in the Express server. The official `@better-auth/mongo-adapter@1.7.11` uses the existing MongoDB connection. Next.js serves the login UI and rewrites same-origin `/api/auth/*` requests to Express; it does not validate sessions itself.
 
-Before enabling authentication:
+Setup steps:
 
-1. Confirm the installed Better Auth version and supported database adapters.
-2. Confirm whether the selected persistence approach is supported.
-3. Determine how Express will validate authenticated requests.
-4. Configure trusted origins and session security.
-5. Establish secure administrator provisioning.
-6. Define the `ADMIN`, `TEAM_MEMBER`, and `CLIENT` roles.
-7. Test access restrictions on both the frontend and backend.
+1. Run `npm install` in `server/` and `client/`. The server needs `better-auth` and `@better-auth/mongo-adapter`; the client needs no auth SDK because it calls the relative `/api/auth/*` path.
+2. Copy `server/.env.example` to `server/.env` and fill in `MONGODB_URI`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and `FRONTEND_URL`. Use `http://localhost:3000` for `BETTER_AUTH_URL` in development.
+3. Make sure `client/.env.local` has `API_BASE_URL=http://localhost:5000/api/v1`. `next.config.ts` derives the API origin for the `/api/auth` rewrite from it, and the protected layouts call `${API_BASE_URL}/auth/me` server-side.
+4. Start the server, then create the first administrator from `server/`:
 
-Do not assume that a protected Next.js page automatically protects the Express API.
+   ```bash
+   ADMIN_EMAIL=you@example.com ADMIN_NAME="Your Name" \
+   ADMIN_PASSWORD="a long unique password" npm run create-admin
+   ```
 
-Do not create a public administrator-registration endpoint or permit users to assign themselves privileged roles.
+   On PowerShell, set `$env:ADMIN_EMAIL`, `$env:ADMIN_NAME`, and `$env:ADMIN_PASSWORD` for the single command. The script refuses a second `ADMIN` unless `ALLOW_ADDITIONAL_ADMIN=true` is set, and it never prints the password.
+5. Remove the `ADMIN_*` variables from the shell after provisioning.
+6. Start Next.js, open `/login`, and sign in. `ADMIN` and `TEAM_MEMBER` land in `/admin`; `CLIENT` lands in `/portal`.
+7. Verify the backend independently: `GET /api/v1/auth/me` without a cookie must return `401`, and `/admin/access` or `/portal/access` must return `403` for the wrong role.
+
+Security reminders:
+
+- There is no public sign-up endpoint. `emailAndPassword.disableSignUp` is `true`, and the admin-plugin `role` field is not writable through the profile API.
+- Passwords are hashed by Better Auth with scrypt; nothing in this project stores or logs plaintext passwords.
+- Password reset/recovery is **not** implemented because it needs email delivery, which is outside this phase. Do not add a custom reset endpoint.
+- The session cookie is `HttpOnly`, `SameSite=Lax`, host-only, and `Secure` on HTTPS. Never store the session token in `localStorage` or `sessionStorage`.
+- Do not assume a protected Next.js page protects the Express API. Express re-validates every protected request.
 
 ## 10. Start the Backend
 

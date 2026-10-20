@@ -161,6 +161,8 @@ Do not introduce a second database or duplicate authentication records without a
 
 Better Auth is the preferred authentication option, subject to compatibility verification.
 
+**Implemented in Task 06:** `better-auth@1.7.11` runs in Express with the official `@better-auth/mongo-adapter@1.7.11`; the browser uses same-origin `/api/auth/*`, which Next rewrites to Express. Express re-validates every protected request with `auth.api.getSession({ headers })`. Admin and portal access is role-checked server-side, and no token is stored in browser storage. See `Authentication-Security.md` §4 and `API.md` §8 for the full contract.
+
 Integrate authentication across Next.js and Express only after confirming the supported session-validation approach.
 
 Requirements:
