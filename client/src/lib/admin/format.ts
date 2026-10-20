@@ -40,3 +40,31 @@ export function linesToArray(value: string): string[] {
 export function arrayToLines(value: string[]): string {
   return value.join("\n");
 }
+
+export function formatMoney(
+  amountMinor: number | null | undefined,
+  currency = "BDT",
+): string {
+  const amount = (amountMinor ?? 0) / 100;
+  try {
+    return new Intl.NumberFormat("en-BD", {
+      style: "currency",
+      currency,
+      currencyDisplay: "code",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`;
+  }
+}
+
+export function majorToMinor(value: string | number): number {
+  const normalized = String(value).trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return Number.NaN;
+  return Math.round(Number(normalized) * 100);
+}
+
+export function minorToMajor(value: number): string {
+  return (value / 100).toFixed(2);
+}

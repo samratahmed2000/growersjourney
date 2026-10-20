@@ -179,3 +179,116 @@ export type ListResult<T> = {
   data: { items: T[] };
   pagination: Pagination;
 };
+
+export type InvoiceStatus =
+  | "DRAFT"
+  | "ISSUED"
+  | "PARTIALLY_PAID"
+  | "PAID"
+  | "OVERDUE"
+  | "VOID";
+
+export type InvoiceLineItem = {
+  description: string;
+  quantityMilli: number;
+  quantity: string;
+  unitAmountMinor: number;
+  lineTotalMinor: number;
+};
+
+export type InvoiceClient = {
+  id: string;
+  displayName?: string | null;
+  companyName?: string | null;
+  primaryEmail?: string | null;
+  status?: string | null;
+};
+
+export type InvoiceProject = {
+  id: string;
+  name?: string | null;
+  status?: string | null;
+};
+
+export type InvoiceSummary = {
+  id: string;
+  invoiceNumber: string | null;
+  client: InvoiceClient | null;
+  project: InvoiceProject | null;
+  status: InvoiceStatus;
+  currency: string;
+  totalMinor: number;
+  amountPaidMinor: number;
+  amountRefundedMinor: number;
+  balanceDueMinor: number;
+  overpaidMinor: number;
+  issueDate: string | null;
+  dueDate: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  canPay: boolean;
+};
+
+export type InvoiceDetail = InvoiceSummary & {
+  notes: string | null;
+  internalNotes?: string | null;
+  lineItems: InvoiceLineItem[];
+  subtotalMinor: number;
+  discountMinor: number;
+  taxRateBps: number;
+  taxMinor: number;
+  issuedAt: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+  allowedActions: string[];
+};
+
+export type PaymentStatus =
+  | "INITIATED"
+  | "PENDING"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "CANCELLED"
+  | "EXPIRED"
+  | "PARTIALLY_REFUNDED"
+  | "REFUNDED";
+
+export type PaymentRefund = {
+  id: string;
+  amountMinor: number;
+  status: string;
+  reason: string | null;
+  providerRefundId: string | null;
+  createdAt: string | null;
+  completedAt: string | null;
+};
+
+export type PaymentSummary = {
+  id: string;
+  invoiceId: string;
+  clientId?: string;
+  provider: string;
+  environment: string;
+  amountMinor: number;
+  appliedAmountMinor: number;
+  overpaidMinor: number;
+  refundedAmountMinor: number;
+  currency: string;
+  status: PaymentStatus;
+  method: string | null;
+  safeFailureCode?: string | null;
+  providerTransactionId?: string | null;
+  providerPaymentId?: string | null;
+  initiatedAt: string | null;
+  verifiedAt: string | null;
+  failedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  invoice?: InvoiceSummary | null;
+  refunds?: PaymentRefund[];
+};
+
+export type PaymentDetail = PaymentSummary & {
+  invoice: InvoiceSummary | null;
+  refunds: PaymentRefund[];
+};

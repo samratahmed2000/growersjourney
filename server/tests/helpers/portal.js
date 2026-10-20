@@ -16,12 +16,15 @@ export const SECOND_MILESTONE_ID = "64b000000000000000000012";
  * Start the app with the shared in-memory repositories mounted for both admin
  * and portal tests.
  */
-export async function startPortalTestServer() {
+export async function startPortalTestServer({ finance, financeFactory } = {}) {
   const { repositories, data } = createFakeAdminRepositories();
+  const resolvedFinance =
+    finance ?? financeFactory?.({ repositories, data }) ?? undefined;
   const server = await startAuthTestServer({
     appOptions: {
       adminRepositories: repositories,
       portalRepositories: repositories,
+      ...(resolvedFinance ? { finance: resolvedFinance } : {}),
     },
   });
 
@@ -33,6 +36,7 @@ export async function startPortalTestServer() {
     auth: server.auth,
     repositories,
     data,
+    finance: resolvedFinance,
   };
 }
 

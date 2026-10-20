@@ -315,7 +315,9 @@ Give each client secure visibility into their own work.
 Implemented:
 
 - `/portal` dashboard, `/portal/projects`, and `/portal/projects/[id]` with project status, milestone timeline, safe external links, and client-visible progress updates.
-- `/portal/invoices` remains a deliberate placeholder. Invoices and payments are not implemented.
+- `/portal/invoices` was a deliberate placeholder at the end of Task 08; Task 09
+  replaced it with invoice list/detail/print and payment history. Real provider
+  payments remain unimplemented.
 - ADMIN project create/edit, active-client assignment, status workflow, milestone create/edit, and internal/client-visible updates, all under `/api/v1/admin`.
 - Explicit client portal linking on the client record. One linked Better Auth `CLIENT` account per client; no automatic email matching and no account invitation flow.
 - Object-level authorization in Express. Another client's project, milestone, or update returns `404`; role-only portal access returns `403 PORTAL_ACCESS_DENIED`.
@@ -359,6 +361,44 @@ Implement invoice management and, when configured, payment processing.
 - Payment status changes are based on verified server-side events.
 - Duplicate webhooks do not create duplicate payments.
 - Financial records have appropriate access controls and auditability.
+
+**Task 09 status**
+
+Implemented:
+
+- Server-calculated invoices with BDT integer minor units, fractional quantity
+  thousandths, explicit draft/issue/void lifecycle, atomic invoice numbering,
+  and `ISSUED` / `PARTIALLY_PAID` / `PAID` / `OVERDUE` derived at read time.
+  `DRAFT` and `VOID` remain explicit lifecycle states.
+- Admin invoice list/create/edit/detail/print pages and invoice actions. The
+  client and portal invoice list/detail/print pages are implemented; drafts are
+  excluded and cross-client records return `404`.
+- Verified payment ledger with partial payments, provider event deduplication,
+  signed webhook processing, refunds, and a reconciliation hook.
+- Provider-independent service boundary and a local `FAKE` sandbox adapter with
+  clearly labelled mock checkout. The adapter is refused in production.
+- Admin payment list/detail, refund, and reconcile UI; portal payment history
+  and payment-result page.
+- Finance environment validation and safe `.env.example` names. No real provider
+  credentials, card data, tax rules, or fee/settlement terms were invented.
+- 15 new server tests plus the existing suite: **149 tests, all passing**. The
+  client lint, typecheck, and production build pass.
+
+Deliberately not implemented in Task 09:
+
+- Any real payment provider (SSLCommerz, aamarPay, or another). Merchant
+  approval, credentials, currency support, fee/settlement, refund behavior, and
+  webhook contracts are still unconfirmed.
+- PDF generation, email delivery, automatic invoice reminders, scheduled
+  overdue status persistence, client invitation/provisioning, and live client
+  payment testing against a real provider.
+- Live MongoDB/Atlas persistence of the new finance collections was not verified
+  in this environment. The test suite uses in-memory finance repositories; the
+  database write path is implemented but needs a manual smoke test.
+- Refunds are provider-first. If the provider confirms a refund but the database
+  transaction then fails, the refund exists at the provider while the local
+  ledger still needs reconciliation. Run the manual reconciliation check; do not
+  silently retry a potentially completed refund.
 
 ### Phase 10 — Notifications and Automation
 

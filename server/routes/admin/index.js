@@ -7,6 +7,8 @@ import { createAdminClientsRouter } from "./clients.js";
 import { createAdminProjectsRouter } from "./projects.js";
 import { createAdminServicesRouter } from "./services.js";
 import { createAdminPortfolioRouter } from "./portfolio.js";
+import { createAdminInvoicesRouter } from "./invoices.js";
+import { createAdminPaymentsRouter } from "./payments.js";
 
 /**
  * ADMIN-only management API.
@@ -19,6 +21,7 @@ export function createAdminRouter({
   auth,
   allowedOrigins = [],
   repositories = {},
+  finance = null,
 } = {}) {
   const router = Router();
   const requireAuth = createRequireAuth({ auth });
@@ -67,6 +70,17 @@ export function createAdminRouter({
     "/portfolio",
     createAdminPortfolioRouter({ repository: repositories.portfolio }),
   );
+
+  if (finance?.invoiceService && finance?.paymentService) {
+    router.use(
+      "/invoices",
+      createAdminInvoicesRouter({ service: finance.invoiceService }),
+    );
+    router.use(
+      "/payments",
+      createAdminPaymentsRouter({ service: finance.paymentService }),
+    );
+  }
 
   return router;
 }

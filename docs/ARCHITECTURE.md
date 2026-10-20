@@ -799,6 +799,15 @@ Security requirements:
 
 Payment integration must remain disabled until provider credentials and verification procedures are configured.
 
+**Task 09 status:** invoice CRUD, issue/void, server-calculated totals, the verified
+payment ledger, partial payments, refunds, reconciliation hooks, signed webhook
+verification, and duplicate-event handling are implemented. The only provider
+is the local `FAKE` sandbox adapter; it is refused in production and moves no
+money. A real provider (SSLCommerz or aamarPay, still unconfirmed) must be added
+only after merchant approval, credentials, currency support, fee/settlement
+terms, refund behavior, and webhook contracts are settled. Live payments remain
+disabled until then.
+
 ---
 
 ## 12. AI Integration Architecture
@@ -998,9 +1007,18 @@ EMAIL_PROVIDER=
 EMAIL_API_KEY=
 EMAIL_FROM=
 
-PAYMENT_PROVIDER=
-PAYMENT_SECRET_KEY=
+INVOICE_SUPPORTED_CURRENCIES=BDT
+INVOICE_NUMBER_PREFIX=INV
+INVOICE_TIMEZONE=Asia/Dhaka
+INVOICE_OVERDUE_GRACE_DAYS=0
+INVOICE_TAX_ENABLED=false
+INVOICE_DISCOUNT_ENABLED=false
+
+PAYMENTS_ENABLED=false
+PAYMENT_PROVIDER=FAKE
+PAYMENT_ENVIRONMENT=SANDBOX
 PAYMENT_WEBHOOK_SECRET=
+PAYMENT_PUBLIC_BASE_URL=
 
 AI_PROVIDER=
 AI_API_KEY=
@@ -1179,10 +1197,11 @@ Build the platform in controlled phases.
 
 ### Phase 7 — Financial Features
 
-- Implement invoice management.
-- Add the selected payment provider.
-- Verify webhooks and duplicate-event protection.
-- Test payment and invoice reconciliation.
+- ~~Implement invoice management.~~ (Task 09: implemented)
+- ~~Verify webhooks and duplicate-event protection.~~ (Task 09: implemented
+  for the `FAKE` sandbox; real-provider signatures are still pending)
+- Add the selected payment provider (pending merchant approval and credentials).
+- Test payment and invoice reconciliation against a real provider sandbox.
 
 ### Phase 8 — AI and MCP
 

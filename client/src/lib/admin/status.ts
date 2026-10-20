@@ -1,7 +1,9 @@
 import type {
   ClientStatus,
   InquiryStatus,
+  InvoiceStatus,
   MilestoneStatus,
+  PaymentStatus,
   PortfolioStatus,
   ProjectStatus,
 } from "./types";
@@ -62,4 +64,32 @@ export function portfolioTone(status: PortfolioStatus): StatusTone {
 }
 export function milestoneTone(status: MilestoneStatus): StatusTone {
   return MILESTONE_TONES[status];
+}
+
+const INVOICE_TONES: Record<InvoiceStatus, StatusTone> = {
+  DRAFT: "neutral",
+  ISSUED: "info",
+  PARTIALLY_PAID: "warning",
+  PAID: "accent",
+  OVERDUE: "danger",
+  VOID: "neutral",
+};
+
+const PAYMENT_TONES: Record<PaymentStatus, StatusTone> = {
+  INITIATED: "info",
+  PENDING: "warning",
+  SUCCEEDED: "accent",
+  FAILED: "danger",
+  CANCELLED: "neutral",
+  EXPIRED: "neutral",
+  PARTIALLY_REFUNDED: "warning",
+  REFUNDED: "brand",
+};
+
+export function invoiceTone(status: InvoiceStatus): StatusTone {
+  return INVOICE_TONES[status];
+}
+
+export function paymentTone(status: PaymentStatus): StatusTone {
+  return PAYMENT_TONES[status];
 }

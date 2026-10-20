@@ -21,7 +21,7 @@ export function PortalShell({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col bg-canvas">
+    <div className="flex min-h-screen flex-col bg-canvas print:bg-white">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-brand-900 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white"
@@ -29,7 +29,7 @@ export function PortalShell({
         Skip to content
       </a>
 
-      <header className="border-b border-line bg-surface">
+      <header className="border-b border-line bg-surface print:hidden">
         <Container className="py-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex flex-wrap items-center gap-3">
@@ -58,11 +58,11 @@ export function PortalShell({
         </Container>
       </header>
 
-      <main id="main-content" className="flex-1 py-8 sm:py-10">
+      <main id="main-content" className="flex-1 py-8 sm:py-10 print:py-0">
         <Container>{children}</Container>
       </main>
 
-      <footer className="border-t border-line py-5">
+      <footer className="border-t border-line py-5 print:hidden">
         <Container>
           <p className="text-xs text-muted">
             Growers Journy client portal. Project information is visible only to

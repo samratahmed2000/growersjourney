@@ -7,6 +7,7 @@ import {
 } from "./config/database.js";
 import { createApp } from "./app.js";
 import { createAuth } from "./auth/create-auth.js";
+import { createFinanceRuntime } from "./finance/runtime.js";
 
 /**
  * Process bootstrap.
@@ -73,10 +74,24 @@ try {
   process.exit(1);
 }
 
+let finance;
+
+try {
+  finance = createFinanceRuntime({ env });
+} catch (error) {
+  console.error(
+    `[finance] Could not initialize invoices and payments (${error?.name ?? "Error"}). ` +
+      "Check INVOICE_*, PAYMENTS_*, PAYMENT_PROVIDER, and PAYMENT_WEBHOOK_SECRET in server/.env.",
+  );
+  await disconnectDatabase();
+  process.exit(1);
+}
+
 const app = createApp({
   allowedOrigins: env.frontendUrls,
   trustProxy: env.trustProxy,
   auth,
+  finance,
 });
 
 const server = app.listen(env.port, () => {

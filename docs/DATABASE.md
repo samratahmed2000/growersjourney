@@ -83,10 +83,13 @@ Example:
 | `projectmemberships`    | User access to projects                            | Phase 5                             |
 | `milestones`            | Project milestones                                 | Phase 5                             |
 | `projectupdates`        | Project progress updates                           | Phase 5                             |
-| `invoices`              | Billing documents                                  | Phase 6                             |
-| `payments`              | Payment attempts and verified payment records      | Phase 6                             |
+| `invoices`              | Billing documents                                  | Implemented (Task 09)              |
+| `invoice_counters`      | Atomic per-prefix/year invoice numbering           | Implemented (Task 09)              |
+| `payments`              | Payment attempts and verified payment records      | Implemented (Task 09)              |
+| `payment_events`        | Provider event ledger and duplicate-delivery guard | Implemented (Task 09)              |
+| `payment_refunds`       | Provider-confirmed refund records                  | Implemented (Task 09)              |
 | `notifications`         | User notifications                                 | As needed                           |
-| `auditevents`           | Important administrative actions                   | Early security milestone            |
+| `audit_events`          | Important administrative actions                   | Implemented for finance (Task 09)   |
 | `aiusagerecords`        | AI usage and cost metadata                         | When AI features launch             |
 
 Names above describe the intended logical collections. Authentication collection names and fields follow the official Better Auth MongoDB adapter configuration. With `better-auth@1.7.11` and `@better-auth/mongo-adapter@1.7.11` the defaults are:
@@ -98,7 +101,7 @@ Names above describe the intended logical collections. Authentication collection
 | `account` | Credential records: provider id, scrypt password hash, provider account id |
 | `verification` | Short-lived verification/reset tokens (unused until email delivery exists) |
 
-These are separate from the application's future `clients`/`projects`/`invoices` collections. The authentication adapter owns their schema; do not add Mongoose models for them or edit password hashes by hand.
+These are separate from the application's `clients`/`projects`/`invoices` collections. The authentication adapter owns their schema; do not add Mongoose models for them or edit password hashes by hand.
 
 ---
 
@@ -387,9 +390,10 @@ Multiple contacts for one client require a future membership/invitation model.
 A client record is still not an authentication account, and linking an account is
 an explicit ADMIN action. There is no automatic link based on a matching email.
 
-Project memberships, invoices, and payments are still **not implemented**.
-Projects, milestones, and updates are never hard-deleted; projects are cancelled
-and child records are edited.
+Project memberships are still **not implemented**. Invoices, payments, payment
+events, refunds, invoice counters, and finance audit events are implemented by
+Task 09 (see sections 14–16). Projects, milestones, and updates are never
+hard-deleted; projects are cancelled and child records are edited.
 
 `isSample` defaults to `true` deliberately. Publishing real case studies
 requires an explicit administrator decision; the model has no testimonial,
@@ -489,7 +493,8 @@ interface ProjectUpdate {
 
 Purpose: Represent a billing document issued to a client.
 
-### Suggested fields
+**Implemented in Task 09** in `server/models/invoice.js`, collection
+`invoices`. The model stores server-calculated values only.
 
 ```ts
 type InvoiceStatus =
@@ -500,27 +505,40 @@ type InvoiceStatus =
   | "OVERDUE"
   | "VOID";
 
-interface InvoiceItem {
+interface InvoiceLineItem {
   description: string;
-  quantity: number;
+  quantityMilli: number; // 1.5 is stored as 1500
   unitAmountMinor: number;
+  lineTotalMinor: number;
 }
 
 interface Invoice {
-  invoiceNumber: string;
-  clientId: string;
-  projectId?: string;
-  currency: string;
-  items: InvoiceItem[];
+  invoiceNumber?: string; // optional on a draft; generated at issue
+  clientId: ObjectId; // Client
+  projectId?: ObjectId; // Project
+  status: InvoiceStatus;
+  currency: "BDT" | string; // validated against the enabled currency list
+  lineItems: InvoiceLineItem[];
   subtotalMinor: number;
   discountMinor: number;
+  taxRateBps: number;
   taxMinor: number;
   totalMinor: number;
-  amountPaidMinor: number;
-  status: InvoiceStatus;
+  amountPaidMinor: number; // sum of verified payment amounts
+  amountRefundedMinor: number; // sum of verified refunds
+  balanceDueMinor: number; // derived: total - (paid - refunded)
+  overpaidMinor: number; // derived: max(0, net paid - total)
   issueDate?: Date;
   dueDate?: Date;
-  createdBy: string;
+  issuedAt?: Date;
+  voidedAt?: Date;
+  voidReason?: string;
+  notes?: string; // client-visible
+  internalNotes?: string; // admin only, never serialized to portal
+  createdBy?: string;
+  updatedBy?: string;
+  issuedBy?: string;
+  voidedBy?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -528,24 +546,30 @@ interface Invoice {
 
 ### Monetary representation
 
-Use integer minor units where the currency's accounting conventions support this representation. For example, a two-decimal currency can be stored in its smallest standard unit.
-
-Do not assume every currency has two decimal places. Define currency-specific rules.
+V1 is BDT-only. Amounts are integer poisha (1 BDT = 100 poisha). Quantities are
+integer thousandths. Stored totals are never floating-point. The server
+recalculates line totals, subtotal, discount, tax, and total on every draft
+write and at issue; request body totals, payment state, and status are rejected
+by the strict validators.
 
 ### Rules
 
 - Calculate all amounts on the server.
-- Never trust client-submitted totals.
-- Validate quantity, discount, tax, and currency rules.
-- Enforce a unique invoice number.
-- Preserve issued invoice history.
-- Do not silently rewrite financial records after payment.
-- Define whether discounts and taxes apply before or after one another.
-- Reconcile `amountPaidMinor` against verified payment records.
-- Prevent invalid status transitions.
-- Use transactions where multiple database writes must remain consistent.
+- Never trust client-submitted totals, paid amounts, refunds, or status.
+- Enforce a unique sparse `invoiceNumber`. The atomic `invoice_counters`
+  collection supplies `PREFIX-YYYY-NNNNNN` at issue. A duplicate returns `409
+  INVOICE_NUMBER_CONFLICT`.
+- Only `DRAFT` is editable. Issued invoices are immutable; corrections use a
+  refund or void workflow.
+- An invoice with net verified payments cannot be voided. Refund first.
+- `PAID`, `PARTIALLY_PAID`, and `OVERDUE` are derived from verified money and
+  the due date, not from a browser claim. There is no scheduled status job.
+- Preserve issued invoice history. There is no hard delete.
+- Use a transaction when a payment/refund changes both the payment and invoice
+  records.
 
-For issued invoices, prefer a controlled amendment or void-and-reissue workflow over silently changing historical financial terms.
+Indexes: unique sparse `invoiceNumber`; `clientId + createdAt`;
+`clientId + status + createdAt`; `status + dueDate`; `projectId + createdAt`.
 
 ---
 
@@ -553,18 +577,69 @@ For issued invoices, prefer a controlled amendment or void-and-reissue workflow 
 
 Purpose: Record payment attempts, provider events, and verified payment outcomes.
 
-### Suggested fields
+**Implemented in Task 09** in `server/models/payment.js` and
+`server/models/payment-event.js`, collections `payments` and `payment_events`.
 
 ```ts
+type PaymentStatus =
+  | "INITIATED"
+  | "PENDING"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "CANCELLED"
+  | "EXPIRED"
+  | "PARTIALLY_REFUNDED"
+  | "REFUNDED";
+
 interface Payment {
-  invoiceId: string;
-  clientId: string;
-  provider: string;
-  providerPaymentId?: string;
+  invoiceId: ObjectId;
+  clientId: ObjectId;
+  provider: "FAKE"; // PAYMENT_PROVIDERS currently has only the sandbox adapter
+  environment: "SANDBOX" | "LIVE";
+  providerTransactionId?: string; // unique sparse
+  providerPaymentId?: string; // unique sparse, set from a verified event
+  idempotencyKey?: string; // unique sparse
   amountMinor: number;
+  appliedAmountMinor: number;
+  overpaidMinor: number;
+  refundedAmountMinor: number;
   currency: string;
-  status: "PENDING" | "SUCCEEDED" | "FAILED" | "CANCELLED" | "REFUNDED";
+  status: PaymentStatus;
+  providerMethod?: string;
+  initiatedByUserId?: string;
+  initiatedAt?: Date;
   verifiedAt?: Date;
+  failedAt?: Date;
+  safeFailureCode?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface PaymentEvent {
+  provider: string;
+  eventId: string;
+  eventType: string;
+  payloadHash: string; // SHA-256, not the raw provider payload
+  paymentId: ObjectId;
+  invoiceId: ObjectId;
+  status: "RECEIVED" | "PROCESSED" | "IGNORED" | "FAILED";
+  attempts: number;
+  safeErrorCode?: string;
+  receivedAt: Date;
+  processedAt?: Date;
+}
+
+interface PaymentRefund {
+  paymentId: ObjectId;
+  invoiceId: ObjectId;
+  provider: string;
+  providerRefundId?: string; // unique sparse
+  amountMinor: number;
+  status: "REQUESTED" | "PENDING" | "SUCCEEDED" | "FAILED";
+  reason?: string;
+  initiatedBy?: string;
+  completedAt?: Date;
+  safeErrorCode?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -573,16 +648,24 @@ interface Payment {
 ### Rules
 
 - Verify payment status on the server.
-- Verify webhook authenticity before processing events.
-- Use provider event IDs for duplicate-event protection where available.
-- Add appropriate unique indexes for provider identifiers.
-- Do not assume a browser redirect means payment succeeded.
-- Never store full card numbers, security codes, or raw payment credentials.
-- Record refunds as supported by the selected provider and financial model.
-- Do not allow clients to modify payment records directly.
-- Reconcile invoice balances using trusted payment records.
-
-The final payment model must account for partial payments, refunds, failed attempts, and provider-specific event behavior.
+- Verify webhook authenticity against the original raw body before parsing or
+  applying the event.
+- The unique `(provider, eventId)` index is the duplicate-delivery guard. A
+  duplicate returns success without crediting the invoice twice.
+- Recheck the payment id, invoice id, provider transaction id, amount, and
+  currency against the stored attempt before applying a successful event.
+- A browser redirect is never proof of payment.
+- Never store full card numbers, security codes, raw provider payloads, or
+  payment credentials.
+- A successful payment increments `invoice.amountPaidMinor` once. Partial
+  payments are allowed; the invoice status is derived from the net verified
+  ledger.
+- Refunds are separate append-only records and are applied only after provider
+  confirmation. The payment's refunded amount cannot exceed its captured
+  amount; a conditional write bounds concurrent refund attempts.
+- Use a transaction for the payment + invoice + event + refund writes when
+  `MONGODB_TRANSACTIONS` is enabled. Atlas replica sets support this.
+- The only implemented provider is `FAKE`; no real provider contract is claimed.
 
 ---
 
@@ -703,8 +786,11 @@ Create indexes based on actual queries and uniqueness requirements.
 | Project memberships | Unique `projectId` + `userId`                                         |
 | Milestones          | `projectId` + `sortOrder`                                             |
 | Project updates     | `projectId` + `createdAt`                                             |
-| Invoices            | Unique `invoiceNumber`; `clientId` + `status`                         |
-| Payments            | `invoiceId` + `createdAt`; appropriate provider identifier uniqueness |
+| Invoices            | Unique sparse `invoiceNumber`; `clientId` + `status` + `createdAt`; `status` + `dueDate` |
+| Invoice counters    | `_id` is `invoice:PREFIX:YEAR`; atomic `sequence` |
+| Payments            | `invoiceId` + `createdAt`; unique sparse `provider` + `providerTransactionId`, `provider` + `providerPaymentId`, `idempotencyKey` |
+| Payment events      | Unique `provider` + `eventId`; `status` + `receivedAt` |
+| Payment refunds     | Unique sparse `provider` + `providerRefundId`; `paymentId` + `createdAt` |
 | Notifications       | `userId` + `createdAt`                                                |
 | Audit events        | `createdAt`; `actorUserId` + `createdAt`                              |
 | AI usage records    | `userId` + `createdAt`                                                |
@@ -887,19 +973,25 @@ Build database features in this order:
 
 ### Phase 5
 
-- Create Client, Project, ProjectMembership, Milestone, and ProjectUpdate models.
-- Add ownership and membership checks.
-- Test cross-client access restrictions.
+- ~~Create Client, Project, Milestone, and ProjectUpdate models.~~ (Tasks 07–08:
+  implemented)
+- Create ProjectMembership (still not implemented).
+- ~~Add ownership checks.~~ (Tasks 07–08: implemented)
+- ~~Test cross-client access restrictions.~~ (Tasks 07–08: implemented)
 
 ### Phase 6
 
-- Create Invoice and Payment models.
-- Implement financial validation.
-- Add verified payment processing and idempotency.
+- ~~Create Invoice and Payment models.~~ (Task 09: implemented)
+- ~~Implement financial validation.~~ (Task 09: implemented)
+- ~~Add verified payment processing and idempotency.~~ (Task 09: implemented for
+  the `FAKE` sandbox)
+- Add a real provider and reconcile its sandbox before live payments.
 
 ### Phase 7
 
-- Add Notifications and AuditEvent.
+- ~~Add AuditEvent.~~ (Task 09: implemented for finance; broader audit coverage
+  is still pending)
+- Add Notifications when delivery is implemented.
 - Add AIUsageRecord only when required.
 - Review retention, privacy, and operational monitoring.
 

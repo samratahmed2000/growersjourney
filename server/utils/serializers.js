@@ -1,6 +1,8 @@
 import { INQUIRY_STATUS_TRANSITIONS } from "../constants/inquiry.js";
 import { MILESTONE_STATUS_TRANSITIONS } from "../constants/milestone.js";
 import { PROJECT_STATUS_TRANSITIONS } from "../constants/project.js";
+import { deriveInvoiceStatus } from "./invoice-status.js";
+import { balanceDueMinor, overpaidMinor } from "./money.js";
 
 /**
  * Safe API projections.
@@ -13,7 +15,9 @@ import { PROJECT_STATUS_TRANSITIONS } from "../constants/project.js";
 
 function id(value) {
   if (!value) return null;
-  return typeof value === "string" ? value : String(value);
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value._id) return String(value._id);
+  return String(value);
 }
 
 function date(value) {
@@ -266,4 +270,202 @@ export function serializePortfolio(project) {
     createdAt: date(project.createdAt),
     updatedAt: date(project.updatedAt),
   };
+}
+
+function serializeInvoiceClient(client) {
+  if (!client) return null;
+  if (typeof client === "string") return { id: client };
+  return {
+    id: id(client._id ?? client.id),
+    displayName: client.displayName ?? null,
+    companyName: client.companyName ?? null,
+    primaryEmail: client.primaryEmail ?? null,
+    status: client.status ?? null,
+  };
+}
+
+function serializeInvoiceProject(project) {
+  if (!project) return null;
+  if (typeof project === "string") return { id: project };
+  return {
+    id: id(project._id ?? project.id),
+    name: project.name ?? null,
+    status: project.status ?? null,
+  };
+}
+
+function quantityFromMilli(quantityMilli) {
+  const value = Number(quantityMilli) / 1000;
+  return Number.isInteger(value)
+    ? String(value)
+    : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function invoiceStatusFor(invoice, options) {
+  if (options.effectiveStatus === false) return invoice.status;
+  return deriveInvoiceStatus({
+    currentStatus: invoice.status,
+    totalMinor: invoice.totalMinor,
+    amountPaidMinor: invoice.amountPaidMinor,
+    amountRefundedMinor: invoice.amountRefundedMinor,
+    dueDate: invoice.dueDate,
+    graceDays: options.overdueGraceDays ?? 0,
+    now: options.now ?? new Date(),
+    timeZone: options.timezone ?? "UTC",
+  });
+}
+
+function invoiceBalance(invoice) {
+  return balanceDueMinor({
+    totalMinor: invoice.totalMinor,
+    amountPaidMinor: invoice.amountPaidMinor,
+    amountRefundedMinor: invoice.amountRefundedMinor,
+  });
+}
+
+function invoiceOverpaid(invoice) {
+  return overpaidMinor({
+    totalMinor: invoice.totalMinor,
+    amountPaidMinor: invoice.amountPaidMinor,
+    amountRefundedMinor: invoice.amountRefundedMinor,
+  });
+}
+
+function invoiceAllowedActions(invoice, status) {
+  if (status === "DRAFT") return ["edit", "issue", "void"];
+  if (status === "VOID" || status === "PAID") return [];
+  const netPaid = Math.max(
+    0,
+    (invoice.amountPaidMinor ?? 0) - (invoice.amountRefundedMinor ?? 0),
+  );
+  return netPaid === 0 ? ["void"] : [];
+}
+
+export function serializeInvoiceSummary(invoice, options = {}) {
+  const status = invoiceStatusFor(invoice, options);
+  const balance = invoiceBalance(invoice);
+
+  return {
+    id: id(invoice._id ?? invoice.id),
+    invoiceNumber: invoice.invoiceNumber ?? null,
+    client: serializeInvoiceClient(invoice.clientId),
+    project: serializeInvoiceProject(invoice.projectId),
+    status,
+    currency: invoice.currency,
+    totalMinor: invoice.totalMinor,
+    amountPaidMinor: invoice.amountPaidMinor ?? 0,
+    amountRefundedMinor: invoice.amountRefundedMinor ?? 0,
+    balanceDueMinor: balance,
+    overpaidMinor: invoiceOverpaid(invoice),
+    issueDate: date(invoice.issueDate),
+    dueDate: date(invoice.dueDate),
+    createdAt: date(invoice.createdAt),
+    updatedAt: date(invoice.updatedAt),
+    canPay:
+      Boolean(options.paymentsEnabled) &&
+      ["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(status) &&
+      balance > 0,
+  };
+}
+
+export function serializeInvoiceDetail(invoice, options = {}) {
+  const summary = serializeInvoiceSummary(invoice, options);
+
+  return {
+    ...summary,
+    notes: invoice.notes ?? null,
+    internalNotes: options.includeInternal
+      ? invoice.internalNotes ?? null
+      : undefined,
+    lineItems: (invoice.lineItems ?? []).map((item) => ({
+      description: item.description,
+      quantityMilli: item.quantityMilli,
+      quantity: quantityFromMilli(item.quantityMilli),
+      unitAmountMinor: item.unitAmountMinor,
+      lineTotalMinor: item.lineTotalMinor,
+    })),
+    subtotalMinor: invoice.subtotalMinor,
+    discountMinor: invoice.discountMinor ?? 0,
+    taxRateBps: invoice.taxRateBps ?? 0,
+    taxMinor: invoice.taxMinor ?? 0,
+    issuedAt: date(invoice.issuedAt),
+    voidedAt: date(invoice.voidedAt),
+    voidReason: invoice.voidReason ?? null,
+    allowedActions: invoiceAllowedActions(invoice, summary.status),
+  };
+}
+
+function serializePaymentRefund(refund) {
+  return {
+    id: id(refund._id ?? refund.id),
+    amountMinor: refund.amountMinor,
+    status: refund.status,
+    reason: refund.reason ?? null,
+    providerRefundId: refund.providerRefundId ?? null,
+    createdAt: date(refund.createdAt),
+    completedAt: date(refund.completedAt),
+  };
+}
+
+export function serializePaymentSummary(payment, options = {}) {
+  return {
+    id: id(payment._id ?? payment.id),
+    invoiceId: id(payment.invoiceId),
+    clientId: options.includeClient ? id(payment.clientId) : undefined,
+    provider: payment.provider,
+    environment: payment.environment,
+    amountMinor: payment.amountMinor,
+    appliedAmountMinor: payment.appliedAmountMinor ?? 0,
+    overpaidMinor: payment.overpaidMinor ?? 0,
+    refundedAmountMinor: payment.refundedAmountMinor ?? 0,
+    currency: payment.currency,
+    status: payment.status,
+    method: payment.providerMethod ?? null,
+    safeFailureCode: options.includeInternal
+      ? payment.safeFailureCode ?? null
+      : undefined,
+    providerTransactionId: options.includeProviderRefs
+      ? payment.providerTransactionId ?? null
+      : undefined,
+    providerPaymentId: options.includeProviderRefs
+      ? payment.providerPaymentId ?? null
+      : undefined,
+    initiatedAt: date(payment.initiatedAt),
+    verifiedAt: date(payment.verifiedAt),
+    failedAt: date(payment.failedAt),
+    createdAt: date(payment.createdAt),
+    updatedAt: date(payment.updatedAt),
+  };
+}
+
+export function serializePaymentDetail(payment, options = {}) {
+  const summary = serializePaymentSummary(payment, options);
+  return {
+    ...summary,
+    invoice:
+      payment.invoiceId && typeof payment.invoiceId === "object"
+        ? serializeInvoiceSummary(payment.invoiceId, options)
+        : null,
+    refunds: (payment.refunds ?? []).map(serializePaymentRefund),
+  };
+}
+
+export function serializePortalPayment(payment) {
+  return serializePaymentSummary(payment, { includeClient: false });
+}
+
+export function serializePortalInvoiceSummary(invoice, options = {}) {
+  return serializeInvoiceSummary(invoice, options);
+}
+
+export function serializePortalInvoiceDetail(invoice, options = {}) {
+  const serialized = serializeInvoiceDetail(invoice, {
+    ...options,
+    includeInternal: false,
+  });
+  // Admin workflow metadata and internal void notes are not part of the client
+  // contract.
+  delete serialized.allowedActions;
+  delete serialized.voidReason;
+  return serialized;
 }

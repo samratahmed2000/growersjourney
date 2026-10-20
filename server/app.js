@@ -10,6 +10,8 @@ import createInquiriesRouter from "./routes/inquiries.js";
 import createAuthRouter from "./routes/auth.js";
 import createAdminRouter from "./routes/admin/index.js";
 import createPortalRouter from "./routes/portal/index.js";
+import createPaymentWebhookRouter from "./routes/webhooks/payments.js";
+import createMockPaymentRouter from "./routes/payments/mock.js";
 
 /**
  * Builds the Express application.
@@ -71,6 +73,11 @@ export function createApp({
   adminRepositories,
   /** Injectable in tests only. Defaults to the Mongoose portal repositories. */
   portalRepositories,
+  /**
+   * Invoice/payment runtime built by `finance/runtime.js`. When omitted, the
+   * finance routes are not mounted, so there is no unguarded financial surface.
+   */
+  finance,
 } = {}) {
   const app = express();
 
@@ -101,6 +108,25 @@ export function createApp({
     app.all("/api/auth/*splat", toNodeHandler(auth));
   }
 
+  // Provider webhooks and the mock checkout need the raw body, so they must be
+  // mounted before express.json(). Signature verification happens in the
+  // provider adapter, never in a browser route.
+  if (finance?.paymentService && finance?.provider) {
+    app.use(
+      "/api/v1/webhooks/payments",
+      createPaymentWebhookRouter({ paymentService: finance.paymentService }),
+    );
+    if (finance.provider.name === "FAKE") {
+      app.use(
+        "/api/v1/payments/mock",
+        createMockPaymentRouter({
+          paymentService: finance.paymentService,
+          provider: finance.provider,
+        }),
+      );
+    }
+  }
+
   app.use(express.json({ limit: jsonLimit }));
 
   // Versioned API routes. Health checks live in ./routes/health.js.
@@ -125,13 +151,16 @@ export function createApp({
         auth,
         allowedOrigins,
         repositories: adminRepositories,
+        finance,
       }),
     );
     app.use(
       "/api/v1/portal",
       createPortalRouter({
         auth,
+        allowedOrigins,
         repositories: portalRepositories,
+        finance,
       }),
     );
   }

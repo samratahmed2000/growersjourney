@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  CreditCard,
   FolderKanban,
   Images,
   Inbox,
   Layers,
   LayoutDashboard,
+  ReceiptText,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +21,8 @@ const ICONS: Record<AdminNavItem["icon"], LucideIcon> = {
   inquiries: Inbox,
   clients: Users,
   projects: FolderKanban,
+  invoices: ReceiptText,
+  payments: CreditCard,
   services: Layers,
   portfolio: Images,
 };

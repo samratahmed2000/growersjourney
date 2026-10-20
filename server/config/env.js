@@ -242,6 +242,177 @@ if (rawTrustProxy && rawTrustProxy.toLowerCase() !== "false") {
   }
 }
 
+// ---------------------------------------------------------------------------
+// INVOICE_* — invoice numbering, money, and due-date policy.
+// ---------------------------------------------------------------------------
+const rawInvoiceCurrencies = (
+  process.env.INVOICE_SUPPORTED_CURRENCIES ?? "BDT"
+)
+  .split(",")
+  .map((value) => value.trim().toUpperCase())
+  .filter(Boolean);
+const invoiceSupportedCurrencies = [...new Set(rawInvoiceCurrencies)];
+
+if (invoiceSupportedCurrencies.length === 0) {
+  problems.push("INVOICE_SUPPORTED_CURRENCIES must contain at least one currency code.");
+} else {
+  for (const currency of invoiceSupportedCurrencies) {
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      problems.push(
+        "INVOICE_SUPPORTED_CURRENCIES entries must be three-letter currency codes.",
+      );
+      break;
+    }
+  }
+}
+
+const rawInvoiceTaxEnabled = (process.env.INVOICE_TAX_ENABLED ?? "false")
+  .trim()
+  .toLowerCase();
+let invoiceTaxEnabled = false;
+if (!["true", "false"].includes(rawInvoiceTaxEnabled)) {
+  problems.push("INVOICE_TAX_ENABLED must be true or false.");
+} else {
+  invoiceTaxEnabled = rawInvoiceTaxEnabled === "true";
+}
+
+const rawInvoiceDiscountEnabled = (
+  process.env.INVOICE_DISCOUNT_ENABLED ?? "false"
+)
+  .trim()
+  .toLowerCase();
+let invoiceDiscountEnabled = false;
+if (!["true", "false"].includes(rawInvoiceDiscountEnabled)) {
+  problems.push("INVOICE_DISCOUNT_ENABLED must be true or false.");
+} else {
+  invoiceDiscountEnabled = rawInvoiceDiscountEnabled === "true";
+}
+
+const invoiceTimezone = (process.env.INVOICE_TIMEZONE ?? "Asia/Dhaka").trim();
+try {
+  new Intl.DateTimeFormat("en-US", { timeZone: invoiceTimezone }).format(new Date());
+} catch {
+  problems.push(
+    "INVOICE_TIMEZONE must be a valid IANA time zone, for example Asia/Dhaka.",
+  );
+}
+
+const rawInvoiceGraceDays = (process.env.INVOICE_OVERDUE_GRACE_DAYS ?? "0").trim();
+let invoiceOverdueGraceDays = 0;
+if (!/^\d+$/.test(rawInvoiceGraceDays)) {
+  problems.push("INVOICE_OVERDUE_GRACE_DAYS must be a whole number between 0 and 60.");
+} else {
+  const parsed = Number.parseInt(rawInvoiceGraceDays, 10);
+  if (parsed > 60) {
+    problems.push("INVOICE_OVERDUE_GRACE_DAYS must be a whole number between 0 and 60.");
+  } else {
+    invoiceOverdueGraceDays = parsed;
+  }
+}
+
+const invoiceNumberPrefix = (process.env.INVOICE_NUMBER_PREFIX ?? "INV")
+  .trim()
+  .toUpperCase();
+if (!/^[A-Z0-9-]{1,12}$/.test(invoiceNumberPrefix)) {
+  problems.push(
+    "INVOICE_NUMBER_PREFIX must be 1-12 letters, numbers, or hyphens.",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PAYMENTS_* — provider-independent payment foundation.
+//
+// The only implemented provider in Task 09 is the local FAKE sandbox adapter.
+// It is refused in production and never moves money. A real provider must be
+// added deliberately after merchant, fee, settlement, refund, and webhook
+// contracts are confirmed.
+//
+// Payments are enabled by default in development so the mock flow is usable,
+// and disabled by default in production until explicitly configured.
+// ---------------------------------------------------------------------------
+const rawPaymentsEnabled = (
+  process.env.PAYMENTS_ENABLED ?? (isProduction ? "false" : "true")
+)
+  .trim()
+  .toLowerCase();
+let paymentsEnabled = false;
+if (!["true", "false"].includes(rawPaymentsEnabled)) {
+  problems.push("PAYMENTS_ENABLED must be true or false.");
+} else {
+  paymentsEnabled = rawPaymentsEnabled === "true";
+}
+
+const paymentProvider = (
+  process.env.PAYMENT_PROVIDER ?? (paymentsEnabled ? "FAKE" : "")
+)
+  .trim()
+  .toUpperCase();
+
+if (paymentsEnabled && !paymentProvider) {
+  problems.push("PAYMENT_PROVIDER is required when PAYMENTS_ENABLED=true.");
+} else if (paymentProvider && paymentProvider !== "FAKE") {
+  problems.push(
+    "PAYMENT_PROVIDER currently supports only FAKE (sandbox). Add a reviewed adapter before enabling another provider.",
+  );
+}
+
+if (paymentsEnabled && isProduction && paymentProvider === "FAKE") {
+  problems.push("PAYMENT_PROVIDER=FAKE cannot be used in production.");
+}
+
+const paymentEnvironment = (
+  process.env.PAYMENT_ENVIRONMENT ?? "SANDBOX"
+)
+  .trim()
+  .toUpperCase();
+if (!["SANDBOX", "LIVE"].includes(paymentEnvironment)) {
+  problems.push("PAYMENT_ENVIRONMENT must be SANDBOX or LIVE.");
+} else if (
+  paymentsEnabled &&
+  paymentProvider === "FAKE" &&
+  paymentEnvironment === "LIVE"
+) {
+  problems.push("PAYMENT_ENVIRONMENT=live cannot be used with the FAKE provider.");
+}
+
+const paymentWebhookSecret = (process.env.PAYMENT_WEBHOOK_SECRET ?? "").trim();
+if (paymentsEnabled && paymentWebhookSecret.length < 32) {
+  problems.push(
+    "PAYMENT_WEBHOOK_SECRET must be at least 32 characters when payments are enabled.",
+  );
+}
+
+const rawMockTokenSecret = (process.env.PAYMENT_MOCK_TOKEN_SECRET ?? "").trim();
+const paymentMockTokenSecret = rawMockTokenSecret || paymentWebhookSecret;
+if (
+  paymentsEnabled &&
+  paymentProvider === "FAKE" &&
+  paymentMockTokenSecret.length < 32
+) {
+  problems.push(
+    "PAYMENT_MOCK_TOKEN_SECRET must be at least 32 characters for the FAKE provider.",
+  );
+}
+
+const rawPaymentPublicBaseUrl = (
+  process.env.PAYMENT_PUBLIC_BASE_URL ?? `http://localhost:${port}`
+).trim();
+let paymentPublicBaseUrl = "";
+try {
+  const parsed = new URL(rawPaymentPublicBaseUrl);
+  if (!/^https?:$/.test(parsed.protocol)) {
+    problems.push("PAYMENT_PUBLIC_BASE_URL must use http:// or https://.");
+  } else if (isProduction && parsed.protocol !== "https:") {
+    problems.push("PAYMENT_PUBLIC_BASE_URL must use https:// in production.");
+  } else {
+    paymentPublicBaseUrl = parsed.href.replace(/\/+$/, "");
+  }
+} catch {
+  problems.push(
+    "PAYMENT_PUBLIC_BASE_URL must be an absolute URL such as https://api.growersjourny.com.",
+  );
+}
+
 if (problems.length > 0) {
   fail(problems);
 }
@@ -258,4 +429,16 @@ export const env = Object.freeze({
   mongodbTransactions,
   betterAuthSecret,
   betterAuthUrl,
+  invoiceSupportedCurrencies,
+  invoiceTaxEnabled,
+  invoiceDiscountEnabled,
+  invoiceTimezone,
+  invoiceOverdueGraceDays,
+  invoiceNumberPrefix,
+  paymentsEnabled,
+  paymentProvider,
+  paymentEnvironment,
+  paymentWebhookSecret,
+  paymentMockTokenSecret,
+  paymentPublicBaseUrl,
 });

@@ -230,12 +230,21 @@ Task 08 test files:
 | `project-workflow.test.js` | project creation with active clients, inactive/unknown client handling, date-order validation, status transitions and conflicts, client reassignment, milestone date bounds and transitions, internal vs client-visible updates, portal visibility, explicit portal link/unlink and duplicate/role/unknown errors, role denial |
 | `project-models.test.js` | Project defaults/date order/link bounds, Milestone completion derivation and status enum, ProjectUpdate default visibility/author, Client link fields and sparse unique index |
 
-Current result: **134/134 server tests pass** (`npm test` from `server/`). This includes the 70 tests from Tasks 03–05, 30 Task 06 tests, 19 Task 07 tests, and 15 Task 08 tests.
+Task 09 test files:
+
+| File | Coverage |
+| --- | --- |
+| `finance-unit.test.js` | Integer minor-unit line and invoice totals, disabled tax/discount rejection, exact balances/formatting, derived `ISSUED`/`PARTIALLY_PAID`/`PAID`/`OVERDUE`, grace-day cutoff and overdue list boundary |
+| `finance-models.test.js` | Invoice defaults/date order/safe-integer/refund rules and unique sparse number, payment safe integers/provider enum/refund bound, event and refund unique indexes, portal serialization excludes internal notes |
+| `invoice-payment-api.test.js` | Admin invoice create/issue/detail/void authorization, server-calculated totals, draft concealment, portal payment-session ownership, overpay rejection, partial payment, refunds, void-with-payments conflict, cross-client `404`, invalid/mismatched webhook signatures and amounts, duplicate and concurrent webhook delivery crediting once |
+
+Current result: **149/149 server tests pass** (`npm test` from `server/`). This includes the 70 tests from Tasks 03–05, 30 Task 06 tests, 19 Task 07 tests, 15 Task 08 tests, and 15 Task 09 tests.
 
 What is **not** automated:
 
 - The actual `Inquiry.create()` write to MongoDB. There is no test database and no in-memory MongoDB dependency. Verify it manually against a development database, never against production data.
-- A real MongoDB connection, real Better Auth persistence, `scripts/create-admin.js`, and live project/milestone/update/portal-link writes against Atlas. Use a development database and verify the `clients`, `projects`, `milestones`, `projectupdates`, and Better Auth collections manually.
+- A real MongoDB connection, real Better Auth persistence, `scripts/create-admin.js`, and live project/milestone/update/portal-link/invoice/payment/refund writes against Atlas. Use a development database and verify the `clients`, `projects`, `milestones`, `projectupdates`, `invoices`, `invoice_counters`, `payments`, `payment_events`, `payment_refunds`, `audit_events`, and Better Auth collections manually.
+- A real payment provider. The only automated payment flow is the in-process `FAKE` sandbox with in-memory repositories; no provider sandbox, merchant credential, settlement, or live webhook delivery was tested.
 - Browser behaviour of the login form, cookie persistence through the Next rewrite, screen-reader announcements, and visual states. A live smoke test against `next start` + a memory-adapter Express server was run manually during Task 06; Task 08 browser interaction, responsive checks, and screen-reader checks were not run.
 - Real HTTPS cookie behavior. `Secure`/`__Secure-` were verified by inspecting the `Set-Cookie` header from a `useSecureCookies: true` instance, not from an HTTPS deployment.
 
@@ -357,6 +366,8 @@ Verify:
 - Failed and refunded transactions are represented correctly.
 - Payment status cannot be changed by an ordinary client request.
 - Provider sandbox results are handled correctly.
+
+Task 09 automated coverage: the finance unit/model suites plus `invoice-payment-api.test.js` cover totals, statuses, validators, authorization, draft concealment, partial payments, refund bounds, cross-client access, invalid signatures, amount mismatches, and duplicate/concurrent delivery. The `FAKE` provider is test-only. A real provider sandbox must be added and verified separately before enabling live payments.
 
 Never use real customer card data or production transactions in routine testing.
 

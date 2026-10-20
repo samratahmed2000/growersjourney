@@ -564,8 +564,8 @@ access. A user can be linked to only one client record:
 - account already linked to another client → `409 PORTAL_USER_ALREADY_LINKED`
 
 Not implemented in Task 08: project memberships, milestone/update deletion,
-invoices, payments, notifications, time tracking, file storage, team management,
-and automatic client-account provisioning.
+notifications, time tracking, file storage, team management, and automatic
+client-account provisioning. Invoices and payments were added by Task 09.
 
 Services and portfolio entries use immutable slugs. `DELETE` archives rather
 than destroys: it sets `isArchived`, unpublishes, and (for portfolio) removes
@@ -716,20 +716,101 @@ Calculate financial totals on the server and define the currency or grouping use
 
 Do not calculate sensitive aggregate data from untrusted client-supplied values.
 
----
+### 9.10 Task 09 finance implementation
+
+The implemented financial API is mounted under `/api/v1/admin` and is subject to
+the same ADMIN-only, trusted-Origin, and `no-store` rules as the rest of the
+admin API. A CLIENT session receives `403 FORBIDDEN`; a TEAM_MEMBER session is
+also denied. Financial amounts and statuses are never accepted from the caller.
+
+| Method | Endpoint                                  | Status |
+| ------ | ----------------------------------------- | ------ |
+| `GET`  | `/api/v1/admin/invoices`                  | Implemented |
+| `POST` | `/api/v1/admin/invoices`                  | Implemented |
+| `GET`  | `/api/v1/admin/invoices/:id`              | Implemented |
+| `PATCH`| `/api/v1/admin/invoices/:id`              | Implemented (drafts only) |
+| `POST` | `/api/v1/admin/invoices/:id/issue`        | Implemented |
+| `POST` | `/api/v1/admin/invoices/:id/void`         | Implemented (no net verified payments) |
+| `GET`  | `/api/v1/admin/payments`                  | Implemented |
+| `GET`  | `/api/v1/admin/payments/:id`              | Implemented |
+| `POST` | `/api/v1/admin/payments/:id/refund`       | Implemented |
+| `POST` | `/api/v1/admin/payments/:id/reconcile`    | Implemented for providers that expose status |
+
+Invoice list filters are `page`, `limit`, `status`, `clientId`, `projectId`,
+`search`, `from`, `to`, `sort`, and `order`. The query is strict: unknown fields,
+invalid statuses, malformed ObjectIds, and invalid dates return `400
+VALIDATION_ERROR`. `from` and `to` filter on `createdAt`.
+
+Invoice rules:
+
+- The currency is server-validated against `INVOICE_SUPPORTED_CURRENCIES`
+  (BDT only in V1). Amounts are integer minor units (poisha); quantities are
+  stored as thousandths. The server calculates each line total, subtotal,
+  discount, tax, and total. A caller cannot submit totals.
+- Discounts and tax are disabled by default. A non-zero value is rejected while
+  the corresponding feature is disabled.
+- A draft may omit its invoice number and due date. Issue requires a due date,
+  a positive total, and an active client; it generates `INV-YYYY-NNNNNN` from an
+  atomic per-prefix/year counter when no number was supplied. Duplicate numbers
+  return `409 INVOICE_NUMBER_CONFLICT`.
+- Only a `DRAFT` may be edited. Issued invoices are immutable; use a refund or
+  void workflow. A void request requires a reason and is rejected with `409
+  INVOICE_HAS_PAYMENTS` when net verified payments exist. `VOID` is terminal.
+- `PAID`, `PARTIALLY_PAID`, and `OVERDUE` are derived from the verified ledger
+  and due date at read time. A browser request cannot set them. The admin list
+  applies the same due-date cutoff for the `OVERDUE` filter (and excludes
+  overdue invoices from `ISSUED`/`PARTIALLY_PAID`); there is no scheduled job
+  that rewrites a stored `OVERDUE` status.
+
+Payment rules:
+
+- The only implemented provider is `FAKE`, a sandbox adapter. It is refused in
+  production, never accepts card data, and creates clearly labelled mock
+  checkout pages. No real provider credentials, fees, settlement, or refund
+  terms are configured.
+- `POST /api/v1/admin/payments/:id/refund` accepts `{ "amountMinor": 5000,
+  "reason": "..." }`. The amount must not exceed the payment's net refundable
+  balance. Refunds are provider-confirmed and applied to the invoice only after
+  confirmation.
+- There is deliberately no endpoint that marks a payment successful. Only a
+  signature-verified provider event can do that. A browser redirect is never
+  proof of payment.
+- `POST /api/v1/admin/payments/:id/reconcile` asks a provider that supports
+  status checks for the current state. With the FAKE adapter it is a manual
+  fallback and does not fabricate a success.
+
+Provider routes:
+
+| Method | Endpoint | Notes |
+| ------ | -------- | ----- |
+| `POST` | `/api/v1/webhooks/payments/:provider` | Raw-body, signature-verified webhook. Mounted before `express.json()`. |
+| `GET`  | `/api/v1/payments/mock/checkout/:paymentId?token=...` | FAKE-only mock checkout page. |
+| `POST` | `/api/v1/payments/mock/complete` | FAKE-only form target; emits a signed server-side event. |
+
+The webhook verifies the provider signature against the original raw body,
+checks the payment reference, invoice, amount, currency, and transaction id,
+and records the provider event before applying it idempotently. A duplicate
+event returns HTTP `200` with `duplicate: true` and does not credit the invoice
+twice. Invalid signatures return `400`; unknown or malformed events are
+rejected without exposing provider internals. When payments are disabled, the
+payment-session, webhook, refund, and reconcile paths return `503
+PAYMENTS_DISABLED` or are not mounted.
+
+
 
 ## 10. Client Portal APIs
 
 Every portal endpoint must verify that the authenticated client is entitled to access the requested record.
 
-### 10.0 Task 08 implementation status
+### 10.0 Task 08/09 implementation status
 
 The implemented portal API is mounted at `/api/v1/portal`. Every request:
 
 1. re-validates the Better Auth session (`401 UNAUTHENTICATED`),
 2. requires the exact `CLIENT` role (`403 FORBIDDEN` for staff), and
 3. requires an active `Client` record whose `userId` equals the authenticated
-   user id (`403 PORTAL_ACCESS_DENIED` otherwise).
+   user id (`403 PORTAL_ACCESS_DENIED` otherwise), and
+4. requires a trusted `Origin` on state-changing requests (`403 INVALID_ORIGIN`).
 
 The resolved client id comes from the server-side `Client` record. A query
 parameter, body field, or route segment can never change ownership. Another
@@ -744,8 +825,11 @@ exists.
 | `GET`  | `/api/v1/portal/projects`                 | Implemented |
 | `GET`  | `/api/v1/portal/projects/:id`             | Implemented |
 | `GET`  | `/api/v1/portal/projects/:id/milestones`  | Implemented |
-| `GET`  | `/api/v1/portal/projects/:id/updates`     | Implemented |
-| `GET`  | `/api/v1/portal/invoices`                 | Not implemented |
+| `GET`    | `/api/v1/portal/projects/:id/updates`     | Implemented |
+| `GET`    | `/api/v1/portal/invoices`                 | Implemented (Task 09) |
+| `GET`    | `/api/v1/portal/invoices/:id`             | Implemented (Task 09) |
+| `POST`   | `/api/v1/portal/invoices/:id/payment-session` | Implemented (Task 09, when payments are enabled) |
+| `GET`    | `/api/v1/portal/payments/:id`             | Implemented (Task 09) |
 
 `GET /api/v1/portal/access` remains the role-only connectivity check from Task
 06. It does not replace the linked-client check used by the feature endpoints.
@@ -808,9 +892,14 @@ project ownership first and return `404` for a cross-client project.
 | -------- | ------------------ |
 | Method   | `GET`              |
 | Endpoint | `/portal/invoices` |
-| Access   | Authorized client  |
+| Access   | Linked active client |
 
-Return invoices belonging to the authenticated client.
+Accepts `page`, `limit`, and an optional `status`. Results are scoped to the
+resolved client id. Draft invoices are excluded in the database query; asking
+for `status=DRAFT` returns an empty page rather than exposing internal drafts.
+Each item contains safe invoice fields, the project name, verified paid and
+refunded totals, the server-calculated balance, and `canPay`. It never contains
+`internalNotes` or another client's record.
 
 ### 10.6 Invoice Details
 
@@ -818,9 +907,13 @@ Return invoices belonging to the authenticated client.
 | -------- | ---------------------- |
 | Method   | `GET`                  |
 | Endpoint | `/portal/invoices/:id` |
-| Access   | Authorized client      |
+| Access   | Linked active client   |
 
-Return the invoice only if the authenticated client is authorized to access it.
+Returns `{ invoice, payments }` for an invoice owned by the resolved client.
+The query includes the client id, so another client's invoice returns `404`.
+Draft invoices also return `404`. The invoice projection excludes internal notes,
+admin actions, and internal void reasons; the payments list is scoped to the same
+invoice and client and omits provider references and internal failure codes.
 
 ### 10.7 Payment Initiation
 
@@ -828,26 +921,43 @@ Return the invoice only if the authenticated client is authorized to access it.
 | -------- | -------------------------------------- |
 | Method   | `POST`                                 |
 | Endpoint | `/portal/invoices/:id/payment-session` |
-| Access   | Authorized client                      |
+| Access   | Linked active client                   |
 
-Purpose: Initiate a payment session with the configured payment provider.
+Accepts an optional `amountMinor` and an optional `idempotencyKey`. The server
+resolves the client and invoice itself, verifies that the invoice is payable and
+not `DRAFT`, `VOID`, or `PAID`, and caps the amount at the current server
+balance. Partial payments are allowed. The response contains a client-safe payment summary
+and a provider checkout URL; `201` is returned. It omits provider transaction
+references and internal failure codes, and it never marks the invoice paid.
 
-Rules:
+An `idempotencyKey` that already belongs to another invoice or client returns
+`409 IDEMPOTENCY_KEY_REUSED`. A key that belongs to an already successful
+payment returns `alreadyPaid: true` and no checkout URL. A terminal failed
+attempt returns `409 PAYMENT_NOT_RETRYABLE`. When online payments are disabled,
+the endpoint returns `503 PAYMENTS_DISABLED`.
 
-- Verify invoice ownership.
-- Confirm the invoice is eligible for payment.
-- Calculate the outstanding balance on the server.
-- Use the configured provider SDK or documented API.
-- Do not accept a browser-supplied payment amount as authoritative.
-- Return only the provider's permitted payment-session details.
-- Apply idempotency controls where supported.
-- Do not mark the invoice paid at session creation.
+### 10.8 Payment Status
 
-If the selected provider uses a different checkout workflow, document and implement that provider's official flow instead.
+| Property | Value                  |
+| -------- | ---------------------- |
+| Method   | `GET`                  |
+| Endpoint | `/portal/payments/:id` |
+| Access   | Linked active client   |
+
+Returns the client-safe payment attempt only if its `clientId` matches the
+resolved client. It omits provider transaction ids, provider payment ids, and
+internal failure codes. The page is informational: only a signed provider event
+changes the payment or invoice state.
 
 ---
 
 ## 11. Invoice Management APIs
+
+**Task 09 implementation status:** the endpoints below are implemented under
+`/api/v1/admin` for ADMIN users. See §9.10 for authorization, strict query
+fields, status rules, and the provider boundary. The legacy shape in this
+section is retained as design context; the implemented JSON uses `lineItems`,
+not `items`.
 
 | Method  | Endpoint                    | Purpose                       |
 | ------- | --------------------------- | ----------------------------- |
@@ -873,25 +983,34 @@ If the selected provider uses a different checkout workflow, document and implem
 
 ```json
 {
-  "clientId": "client-id",
-  "projectId": "project-id",
+  "clientId": "64b000000000000000000001",
+  "projectId": "64b000000000000000000002",
   "currency": "BDT",
-  "items": [
+  "lineItems": [
     {
       "description": "Website development",
-      "quantity": 1,
+      "quantity": "1",
       "unitAmountMinor": 250000
     }
   ],
-  "dueDate": "2026-12-31T00:00:00.000Z"
+  "dueDate": "2026-12-31"
 }
 ```
 
-The amount is illustrative. The backend must determine whether the chosen currency uses this minor-unit representation and calculate all totals independently.
+The amount is illustrative. The server calculates all line and invoice totals;
+`subtotalMinor`, `discountMinor`, `taxMinor`, `totalMinor`, `amountPaidMinor`,
+`balanceDueMinor`, and `status` are server-owned and rejected as unknown fields.
+A draft may omit `invoiceNumber`; it is generated at issue. The create schema
+accepts a null issue/due date, but issue requires a due date.
 
 ---
 
 ## 12. Payment APIs and Webhooks
+
+**Task 09 implementation status:** the verified ledger, partial payments,
+refunds, reconciliation, webhook signature verification, and duplicate-event
+handling are implemented for the sandbox `FAKE` provider only. No real
+provider is configured. See §9.10 for the endpoint table and authorization.
 
 ### 12.1 List Payments
 
@@ -900,7 +1019,19 @@ The amount is illustrative. The backend must determine whether the chosen curren
 | `GET`  | `/admin/payments`     | List payment records |
 | `GET`  | `/admin/payments/:id` | View payment details |
 
-Restrict these endpoints to authorized financial administrators or explicitly permitted staff.
+List filters are `page`, `limit`, `status`, `provider`, `invoiceId`, and `clientId`. Admin detail includes refunds and safe provider references;
+it never includes card data. There is no endpoint that sets a payment to
+`SUCCEEDED`.
+
+| Method | Endpoint                           | Purpose |
+| ------ | ---------------------------------- | ------- |
+| `POST` | `/admin/payments/:id/refund`       | Request a provider-confirmed refund |
+| `POST` | `/admin/payments/:id/reconcile`    | Ask a provider for current status |
+
+Amounts are integer minor units. A refund is checked against the payment's
+remaining refundable balance and is applied to the invoice only after provider
+confirmation. Refund rows are separate `payment_refunds` records. Concurrent
+refund attempts are bounded by a conditional write; a conflict returns `409`.
 
 ### 12.2 Payment Webhook
 
@@ -909,6 +1040,13 @@ Example route:
 ```text
 POST /api/v1/webhooks/payments/:provider
 ```
+
+For the FAKE adapter, the provider is `fake` and the signature header is
+`x-payment-signature`, an HMAC-SHA256 hex digest of the raw request body using
+`PAYMENT_WEBHOOK_SECRET`. The route is mounted before `express.json()` so the
+raw body is available. The response is the standard success envelope with
+`{ received, processed, duplicate }`; a duplicate delivery returns `200` and
+`duplicate: true`. Invalid signatures return `400`.
 
 The exact webhook route must follow the selected provider's integration requirements.
 

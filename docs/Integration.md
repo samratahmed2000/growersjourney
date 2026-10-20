@@ -220,6 +220,23 @@ Use a verified sender domain and server-side email credentials.
 
 Implement payment integration only after selecting a suitable provider and verifying its availability, legal requirements, and supported payment methods.
 
+**Task 09 implementation status:** the provider-independent payment foundation,
+server-calculated invoices, verified ledger, refunds, reconciliation hook, webhook
+signature verification, and duplicate-event handling are implemented. The only
+provider adapter is `FAKE`, a local sandbox that is refused in production and
+moves no real money. SSLCommerz and aamarPay remain candidates only; neither is
+implemented or confirmed, and no fee, settlement, or refund terms are invented.
+
+Implemented environment names (server-only):
+
+- `INVOICE_SUPPORTED_CURRENCIES` (V1: BDT), `INVOICE_NUMBER_PREFIX`,
+  `INVOICE_TIMEZONE`, `INVOICE_OVERDUE_GRACE_DAYS`, `INVOICE_TAX_ENABLED`,
+  `INVOICE_DISCOUNT_ENABLED`
+- `PAYMENTS_ENABLED`, `PAYMENT_PROVIDER=FAKE`, `PAYMENT_ENVIRONMENT=SANDBOX`
+- `PAYMENT_WEBHOOK_SECRET` (at least 32 characters when payments are enabled)
+- optional `PAYMENT_MOCK_TOKEN_SECRET` (falls back to the webhook secret)
+- `PAYMENT_PUBLIC_BASE_URL` (the public API origin used in mock/webhook URLs)
+
 Requirements:
 
 - Calculate invoice totals on the backend.
@@ -235,7 +252,11 @@ Requirements:
 
 A browser redirect or frontend success message alone does not prove that a payment succeeded.
 
-Test payment flows in the provider's sandbox before production use.
+Test payment flows in the provider's sandbox before production use. Before
+adding a real provider, review its merchant onboarding, fee/settlement terms,
+webhook contract, refund semantics, currency support, and production
+credentials. Add the adapter behind `server/payments/create-provider.js` without
+changing the invoice ledger or exposing provider secrets to the browser.
 
 ## 10. AI Integration
 
@@ -349,9 +370,19 @@ BETTER_AUTH_URL=
 EMAIL_PROVIDER_API_KEY=
 EMAIL_FROM=
 
-# Payments — add only for the selected provider
-PAYMENT_SECRET_KEY=
+# Invoices and payments (Task 09)
+INVOICE_SUPPORTED_CURRENCIES=BDT
+INVOICE_NUMBER_PREFIX=INV
+INVOICE_TIMEZONE=Asia/Dhaka
+INVOICE_OVERDUE_GRACE_DAYS=0
+INVOICE_TAX_ENABLED=false
+INVOICE_DISCOUNT_ENABLED=false
+PAYMENTS_ENABLED=true
+PAYMENT_PROVIDER=FAKE
+PAYMENT_ENVIRONMENT=SANDBOX
 PAYMENT_WEBHOOK_SECRET=
+PAYMENT_MOCK_TOKEN_SECRET=
+PAYMENT_PUBLIC_BASE_URL=http://localhost:5000
 
 # AI — add only when an AI provider is selected
 AI_API_KEY=

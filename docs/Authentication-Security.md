@@ -112,7 +112,7 @@ Protected endpoints implemented in this phase:
 
 Public routes (`/api/v1/health`, `/api/v1/health/ready`, `POST /api/v1/inquiries`, `GET /`) remain unauthenticated.
 
-**Not implemented in this phase:** password reset/recovery (requires email delivery, which is out of scope), email verification, client/team invitation UI or account provisioning, project memberships, invoices/payments, and notifications. There is no public sign-up endpoint (`emailAndPassword.disableSignUp: true`).
+**Not implemented in this phase:** password reset/recovery (requires email delivery, which is out of scope), email verification, client/team invitation UI or account provisioning, project memberships, and notifications. Invoices and payments were added by Task 09 and reuse the same role, linked-client, and trusted-Origin boundaries. There is no public sign-up endpoint (`emailAndPassword.disableSignUp: true`).
 
 **Residual risks and unverified items:**
 

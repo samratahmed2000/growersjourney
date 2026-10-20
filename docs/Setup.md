@@ -26,7 +26,7 @@ Install the following tools before starting.
 - **MongoDB Atlas:** Database service for development and production.
 - **Browser:** For frontend testing.
 
-Optional services such as email, payment processing, and AI providers can be configured when their corresponding features are implemented.
+Optional services such as email and AI providers can be configured when their corresponding features are implemented. Task 09 includes a local `FAKE` payment sandbox; a real payment provider is not configured.
 
 ## 3. Verify the Installed Tools
 
@@ -214,6 +214,19 @@ FRONTEND_URL=http://localhost:3000
 BETTER_AUTH_SECRET=
 BETTER_AUTH_URL=http://localhost:3000
 TRUST_PROXY=false
+
+# Invoices and the FAKE sandbox (Task 09)
+INVOICE_SUPPORTED_CURRENCIES=BDT
+INVOICE_NUMBER_PREFIX=INV
+INVOICE_TIMEZONE=Asia/Dhaka
+INVOICE_OVERDUE_GRACE_DAYS=0
+INVOICE_TAX_ENABLED=false
+INVOICE_DISCOUNT_ENABLED=false
+PAYMENTS_ENABLED=true
+PAYMENT_PROVIDER=FAKE
+PAYMENT_ENVIRONMENT=SANDBOX
+PAYMENT_WEBHOOK_SECRET=
+PAYMENT_PUBLIC_BASE_URL=http://localhost:5000
 ```
 
 Notes:
@@ -224,7 +237,7 @@ Notes:
 - `MONGODB_TRANSACTIONS=false` only for a standalone local MongoDB; Atlas supports transactions.
 - `TRUST_PROXY` is `false` directly, or the number of proxy hops you control. `true` is rejected.
 
-Additional variables will be required for email, payment, AI, and logging integrations.
+`PAYMENT_WEBHOOK_SECRET` must be at least 32 characters when `PAYMENTS_ENABLED=true`; the development default is `true`. Set `PAYMENTS_ENABLED=false` if you do not want the mock flow, or add a random secret to use it. `PAYMENT_PROVIDER=FAKE` is rejected in production. Additional variables will be required for email, a real payment provider, AI, and logging integrations.
 
 Document every required variable in the backend's environment template without adding real credentials.
 
@@ -244,7 +257,7 @@ Better Auth **1.7.11** is installed and runs in the Express server. The official
 Setup steps:
 
 1. Run `npm install` in `server/` and `client/`. The server needs `better-auth` and `@better-auth/mongo-adapter`; the client needs no auth SDK because it calls the relative `/api/auth/*` path.
-2. Copy `server/.env.example` to `server/.env` and fill in `MONGODB_URI`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and `FRONTEND_URL`. Use `http://localhost:3000` for `BETTER_AUTH_URL` in development.
+2. Copy `server/.env.example` to `server/.env` and fill in `MONGODB_URI`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and `FRONTEND_URL`. Use `http://localhost:3000` for `BETTER_AUTH_URL` in development. To use the mock payment flow, also set a random `PAYMENT_WEBHOOK_SECRET` (at least 32 characters); otherwise set `PAYMENTS_ENABLED=false`.
 3. Make sure `client/.env.local` has `API_BASE_URL=http://localhost:5000/api/v1`. `next.config.ts` derives the API origin for the `/api/auth` rewrite from it, and the protected layouts call `${API_BASE_URL}/auth/me` server-side.
 4. Start the server, then create the first administrator from `server/`:
 
@@ -340,10 +353,20 @@ Configure these integrations only when their features are ready for implementati
 
 ### Payment provider
 
+Task 09 implements the invoice workflow and a provider-independent payment
+foundation with one local `FAKE` sandbox adapter. It is useful for exercising the
+full lifecycle without a merchant account, but it moves no money and is rejected
+when `NODE_ENV=production`.
+
+A real provider is still pending. When one is selected:
+
 - Select a provider appropriate for the intended business and region.
-- Configure server-side credentials and webhook secrets.
-- Verify webhook signatures.
-- Handle duplicate events safely.
+- Confirm merchant approval, supported currencies, fees, settlement, refunds,
+  and webhook contracts in writing.
+- Configure server-side credentials and a webhook secret of at least 32
+  characters; set `PAYMENTS_ENABLED=true` only when they are ready.
+- Verify webhook signatures against the raw request body.
+- Handle duplicate events safely and keep a ledger of provider events.
 - Never mark an invoice as paid solely because the browser reports success.
 
 ### AI provider

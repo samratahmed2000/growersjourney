@@ -18,7 +18,7 @@ export function AdminShell({
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-canvas">
+    <div className="min-h-screen bg-canvas print:bg-white">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-brand-900 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white"
@@ -26,10 +26,12 @@ export function AdminShell({
         Skip to content
       </a>
 
-      <AdminMobileNav user={user} />
+      <div className="print:hidden">
+        <AdminMobileNav user={user} />
+      </div>
 
       <div className="lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-line bg-surface lg:flex lg:sticky lg:top-0 lg:h-screen lg:flex-col">
+        <aside className="hidden border-r border-line bg-surface lg:flex lg:sticky lg:top-0 lg:h-screen lg:flex-col print:hidden">
           <div className="border-b border-line p-5">
             <Link
               href="/"
@@ -56,7 +58,7 @@ export function AdminShell({
           </div>
         </aside>
 
-        <main id="main-content" className="min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main id="main-content" className="min-w-0 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 print:p-0">
           <div className="mx-auto w-full max-w-[1200px]">{children}</div>
         </main>
       </div>
