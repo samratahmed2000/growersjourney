@@ -51,3 +51,24 @@ export const INQUIRY_LIMITS = Object.freeze({
 
 /** The only status a public submission may ever have. */
 export const INITIAL_INQUIRY_STATUS = "NEW";
+
+/**
+ * Admin-only status transitions.
+ *
+ * An empty array means the status is terminal. The admin UI uses the same map
+ * (via `allowedNextStatuses` in the detail response) so it cannot offer a
+ * transition the API would reject.
+ */
+export const INQUIRY_STATUS_TRANSITIONS = Object.freeze({
+  NEW: Object.freeze(["REVIEWING", "CLOSED"]),
+  REVIEWING: Object.freeze(["QUALIFIED", "CLOSED"]),
+  QUALIFIED: Object.freeze(["CONVERTED", "CLOSED"]),
+  CONVERTED: Object.freeze(["CLOSED"]),
+  CLOSED: Object.freeze([]),
+});
+
+/** Statuses shown as "pending" on the dashboard. */
+export const PENDING_INQUIRY_STATUSES = Object.freeze([
+  "REVIEWING",
+  "QUALIFIED",
+]);

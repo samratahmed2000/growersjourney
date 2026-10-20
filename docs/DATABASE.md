@@ -276,13 +276,20 @@ Zod schema in `server/validators/inquiry.js`.
 | `timeline`           | String     | optional, ≤100; blank is stored as absent                   |
 | `referenceUrl`       | String     | optional, normalized `http(s)` URL, ≤2048                   |
 | `status`             | String     | enum, required, default `NEW`; never accepted from a request |
+| `statusChangedAt`    | Date       | set by the admin status endpoint; absent initially           |
+| `statusChangedBy`    | String     | safe user id of the admin who changed the status             |
 | `createdAt`/`updatedAt` | Date    | Mongoose `timestamps: true`                                 |
 
 - Collection: `inquiries` (explicit, not inferred).
-- Index: `{ status: 1, createdAt: -1 }`, for the future admin list.
+- Index: `{ createdAt: -1 }`, `{ status: 1, createdAt: -1 }`, and
+  `{ service: 1, createdAt: -1 }`, for the admin list and filters.
 - No unique index on `email`; one person may legitimately submit more than once.
 - `notes`, `assignedTo`, and `convertedClientId` are **not** implemented yet.
   They belong to the admin phase and must never be writable by the public route.
+- Task 07 adds `statusChangedAt` and `statusChangedBy`. The admin PATCH endpoint
+  accepts only `{ status }`; the actor comes from the validated session, not the
+  request body. Status transitions are defined in `server/constants/inquiry.js`
+  and validated before the write.
 - The raw network address used for rate limiting is held in memory by the rate
   limiter and is not stored on the inquiry.
 
@@ -360,6 +367,26 @@ interface Project {
 - Do not rely on the project ID alone to authorize access.
 
 Use Mongoose references or a consistent identifier type for all relationship fields.
+
+### Implemented in Task 07
+
+The four admin models exist now. They are intentionally narrower than the
+future target above, and no production seed data is inserted.
+
+| Model / collection       | Implemented fields and rules |
+| ------------------------ | ---------------------------- |
+| `Client` / `clients`     | `displayName` (2–120), `companyName` (≤160), unique lowercase `primaryEmail` (≤254), `phone` (≤40), `status` `ACTIVE`/`INACTIVE` (default `ACTIVE`), optional internal `notes` (≤5000), `updatedBy`, timestamps. Indexes: unique `primaryEmail`, `displayName`, `status + createdAt`. |
+| `Project` / `projects`   | `name` (2–160), optional `description` (≤5000), required `clientId` reference, status enum `PLANNING`/`IN_PROGRESS`/`ON_HOLD`/`COMPLETED`/`CANCELLED`, optional `startDate`/`dueDate`/`completedAt`, `createdBy`, timestamps. A pre-validation hook rejects `dueDate` before `startDate`. Indexes: `clientId + updatedAt`, `status + updatedAt`, `createdAt`. |
+| `Service` / `services`   | `title`, immutable unique `slug`, `summary`, optional `description`/`audience`, icon allowlist, bounded `problems`/`deliverables`/`capabilities`/`technologies` arrays, `isPublished`, `isArchived`, `sortOrder` (0–9999), `updatedBy`, timestamps. Indexes: unique `slug`, `isArchived + isPublished + sortOrder`. |
+| `PortfolioProject` / `portfolioprojects` | `title`, immutable unique `slug`, `summary`, optional `description`/`category`, status `CONCEPT`/`IN_PROGRESS`/`COMPLETED`, bounded `technologies`/`features`/`imageUrls`, validated optional `thumbnailUrl`/`liveUrl`/`sourceUrl`, `isFeatured`, `isPublished`, `publishedAt`, `isSample` (default `true`), `isArchived`, `updatedBy`, timestamps. Indexes: unique `slug`, publication/featured index, `category`. |
+
+Task 07 does **not** implement `userId` on clients, project memberships,
+milestones, project updates, invoices, or payments. A client record is not an
+authentication account and grants no portal access.
+
+`isSample` defaults to `true` deliberately. Publishing real case studies
+requires an explicit administrator decision; the model has no testimonial,
+rating, logo, or outcome-metric fields.
 
 ---
 

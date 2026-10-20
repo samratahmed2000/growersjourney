@@ -3,12 +3,13 @@ import type { ReactNode } from "react";
 import { getCurrentSession } from "@/lib/auth/session";
 import {
   areaPath,
+  isAdminRole,
   isClientRole,
-  isStaffRole,
   type AuthArea,
 } from "@/lib/auth/roles";
 import { AccessDenied, AuthError } from "./auth-states";
 import { AreaShell } from "./area-shell";
+import { AdminShell } from "@/components/admin/admin-shell";
 
 /**
  * Server-side navigation guard for /admin and /portal.
@@ -47,11 +48,15 @@ export async function AreaGuard({
 
   const allowed =
     area === "admin"
-      ? isStaffRole(session.user.role)
+      ? isAdminRole(session.user.role)
       : isClientRole(session.user.role);
 
   if (!allowed) {
     return <AccessDenied area={area} user={session.user} />;
+  }
+
+  if (area === "admin") {
+    return <AdminShell user={session.user}>{children}</AdminShell>;
   }
 
   return (

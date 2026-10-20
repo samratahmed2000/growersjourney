@@ -6,8 +6,8 @@ import { Wordmark } from "@/components/layout/wordmark";
 import {
   areaLabel,
   areaPath,
+  isAdminRole,
   isClientRole,
-  isStaffRole,
   roleLabel,
   type AuthArea,
   type SessionUser,
@@ -78,7 +78,7 @@ export function AccessDenied({
   const correctArea =
     user && isClientRole(user.role) && area === "admin"
       ? "portal"
-      : user && isStaffRole(user.role) && area === "portal"
+      : user && isAdminRole(user.role) && area === "portal"
         ? "admin"
         : null;
 

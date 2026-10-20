@@ -446,6 +446,75 @@ Not implemented in this phase. When it is added, allow only explicitly permitted
 
 All endpoints under `/admin` require an authenticated administrator unless an explicit permission-based exception is documented.
 
+### 9.0 Task 07 implementation status
+
+The implemented admin API is mounted at `/api/v1/admin`. Every request is
+re-authenticated with Better Auth on the Express side and requires the `ADMIN`
+role. `TEAM_MEMBER` and `CLIENT` sessions receive `403 FORBIDDEN`; writes also
+require a trusted `Origin`. Responses are `Cache-Control: private, no-store`.
+
+| Method   | Endpoint                                  | Status in Task 07              |
+| -------- | ----------------------------------------- | ------------------------------ |
+| `GET`    | `/api/v1/admin/dashboard`                 | Implemented                    |
+| `GET`    | `/api/v1/admin/inquiries`                 | Implemented                    |
+| `GET`    | `/api/v1/admin/inquiries/:id`             | Implemented                    |
+| `PATCH`  | `/api/v1/admin/inquiries/:id`             | Implemented (status only)      |
+| `GET`    | `/api/v1/admin/clients`                   | Implemented                    |
+| `POST`   | `/api/v1/admin/clients`                   | Implemented                    |
+| `GET`    | `/api/v1/admin/clients/:id`               | Implemented                    |
+| `PATCH`  | `/api/v1/admin/clients/:id`               | Implemented                    |
+| `GET`    | `/api/v1/admin/projects`                  | Implemented (read-only)        |
+| `GET`    | `/api/v1/admin/projects/:id`              | Implemented (read-only)        |
+| `GET`    | `/api/v1/admin/services`                  | Implemented                    |
+| `POST`   | `/api/v1/admin/services`                  | Implemented                    |
+| `GET`    | `/api/v1/admin/services/:id`              | Implemented                    |
+| `PATCH`  | `/api/v1/admin/services/:id`              | Implemented                    |
+| `DELETE` | `/api/v1/admin/services/:id`              | Implemented (archive)          |
+| `GET`    | `/api/v1/admin/portfolio`                 | Implemented                    |
+| `POST`   | `/api/v1/admin/portfolio`                 | Implemented                    |
+| `GET`    | `/api/v1/admin/portfolio/:id`             | Implemented                    |
+| `PATCH`  | `/api/v1/admin/portfolio/:id`             | Implemented                    |
+| `DELETE` | `/api/v1/admin/portfolio/:id`             | Implemented (archive)          |
+
+List endpoints accept `page` (default 1) and `limit` (default 20, maximum 100)
+and return `{ success, data: { items }, pagination }`. Query objects are strict
+Zod objects: unknown filters, invalid statuses, invalid sort fields, and
+malformed ObjectIds return `400 VALIDATION_ERROR`. Search is a literal,
+case-insensitive contains match with regex metacharacters escaped.
+
+Inquiry status transitions implemented in Task 07:
+
+- `NEW` → `REVIEWING` or `CLOSED`
+- `REVIEWING` → `QUALIFIED` or `CLOSED`
+- `QUALIFIED` → `CONVERTED` or `CLOSED`
+- `CONVERTED` → `CLOSED`
+- `CLOSED` is terminal
+
+Any other transition returns `409 INVALID_STATUS_TRANSITION`. If another admin
+changes the status first, the conditional write returns `409 STATUS_CHANGED`
+instead of overwriting the newer state. `CONVERTED` is a label only; it does not
+create a client or a project. Inquiry deletion, assignment, notes, and conversion
+workflows are **not implemented**.
+
+Clients use a unique lowercase `primaryEmail`. A duplicate returns
+`409 DUPLICATE_CLIENT_EMAIL`. Client records do not create Better Auth users and
+grant no portal access. There is no hard-delete endpoint; the admin UI marks a
+client `INACTIVE`.
+
+Projects are read-only in Task 07. Project creation, editing, memberships,
+milestones, and project updates are **not implemented**.
+
+Services and portfolio entries use immutable slugs. `DELETE` archives rather
+than destroys: it sets `isArchived`, unpublishes, and (for portfolio) removes
+featured placement. Archived records can be restored through `PATCH` with
+`{ "isArchived": false }`; they remain drafts. Published portfolio entries get
+`publishedAt`; only published entries may be featured.
+
+The public `/services` and `/work` pages still read static client content. The
+new Service and PortfolioProject records are admin data until a separate public
+content migration is approved. Public inquiry, health, and auth endpoints were
+not changed.
+
 ### 9.1 Inquiries
 
 | Method   | Endpoint               | Purpose                         |

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { sendSuccess } from "../utils/api-response.js";
 import { createRequireAuth, requireRole } from "../middleware/auth.js";
-import { ROLES, STAFF_ROLES } from "../auth/roles.js";
+import { ROLES } from "../auth/roles.js";
 
 /**
  * Protected profile and access endpoints.
@@ -31,11 +31,11 @@ export function createAuthRouter({ auth } = {}) {
     });
   });
 
-  /** Admin area: ADMIN and TEAM_MEMBER only. */
+  /** Admin area: ADMIN only in Task 07. */
   router.get(
     "/admin/access",
     requireAuth,
-    requireRole(...STAFF_ROLES),
+    requireRole(ROLES.ADMIN),
     (req, res) => {
       sendSuccess(res, {
         area: "admin",

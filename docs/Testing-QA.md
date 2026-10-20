@@ -205,7 +205,7 @@ Use a test database or isolated test collections. Never run destructive test cas
 | `inquiry-validation.test.js` | strict schema: email/URL normalization, blank optionals, service allowlist, length limits, unknown keys |
 | `inquiry-model.test.js`      | offline Mongoose validation: collection name, timestamps, default `NEW`, email lower-casing, blank optionals, required fields, enums, limits |
 
-These tests never open a MongoDB connection and never touch real data — they start the app on an ephemeral port. With Task 05 they also cover item 1 (a valid inquiry) and item 9 (the inquiry rate limit), using an injected repository. With Task 06 they cover item 4 (authentication), item 5 (authorization), and item 10 (unauthorized data exposure at the role and object-helper level), using Better Auth's official in-memory adapter and injected fake resources. The admin dashboard API does not exist yet, so there is no live admin data endpoint to exercise.
+These tests never open a MongoDB connection and never touch real data — they start the app on an ephemeral port. With Task 05 they also cover item 1 (a valid inquiry) and item 9 (the inquiry rate limit), using an injected repository. With Task 06 they cover item 4 (authentication), item 5 (authorization), and item 10 (unauthorized data exposure at the role and object-helper level), using Better Auth's official in-memory adapter and injected fake resources. Task 07 adds live admin API tests through injected repositories, so the admin endpoints are exercised without MongoDB.
 
 Task 06 test files:
 
@@ -213,9 +213,16 @@ Task 06 test files:
 | --- | --- |
 | `auth.test.js` | public sign-up disabled; valid sign-in; safe `/auth/me`; wrong password vs unknown email (same generic error); missing/malformed/expired session; logout revocation; cross-site sign-in and sign-out CSRF; repeated failed sign-ins → `429`; unknown role fails closed; public health/inquiry routes stay public; session identity cannot be spoofed with headers |
 | `auth-config.test.js` | passwords stored as salted scrypt hashes, never plaintext; fixed 7-day cookie with `HttpOnly`/`SameSite=Lax`/`Path=/`; production `Secure` + `__Secure-` cookie; unknown role rejected by `createUser`; default role is `CLIENT`; `createAuth` rejects missing DB, short secret, invalid URL, invalid rate-limit values |
-| `authorization.test.js` | ADMIN/TEAM_MEMBER/CLIENT access matrix for `/admin/access` and `/portal/access`; all protected endpoints reject anonymous callers; client cannot spoof admin via headers or query; query-level scoping; Client A vs Client B object access → `404`; staff do not get implicit ownership; role helpers fail closed; safe user projection strips secrets; `requireRole` and `requireTrustedOrigin` unit behavior |
+| `authorization.test.js` | ADMIN/TEAM_MEMBER/CLIENT access matrix for `/admin/access` and `/portal/access` (Task 07: `TEAM_MEMBER` is denied `/admin`); all protected endpoints reject anonymous callers; client cannot spoof admin via headers or query; query-level scoping; Client A vs Client B object access → `404`; staff do not get implicit ownership; role helpers fail closed; safe user projection strips secrets; `requireRole` and `requireTrustedOrigin` unit behavior |
 
-Current result: **100/100 server tests pass** (`npm test` from `server/`). This includes the 70 tests from Tasks 03–05 and 30 new Task 06 tests.
+Task 07 test files:
+
+| File | Coverage |
+| --- | --- |
+| `admin-api.test.js` | anonymous/`TEAM_MEMBER`/`CLIENT` denied and `ADMIN` allowed; missing/untrusted origin on writes; inquiry list pagination/filter validation and invalid ids; valid and invalid status transitions; unknown fields rejected; duplicate client email; client detail with linked projects; duplicate service slug, create, archive; portfolio unsafe URL, publication and featured rules; read-only project list/detail; repository failure → generic `500` with no internal detail |
+| `admin-models.test.js` | Client normalization/defaults/status validation; Project required client and date-order validation; Service slug/defaults/bounded arrays; Portfolio sample default and image limit; URL normalization; empty update schemas; inquiry transition map and serializer field safety |
+
+Current result: **119/119 server tests pass** (`npm test` from `server/`). This includes the 70 tests from Tasks 03–05, 30 Task 06 tests, and 19 Task 07 tests.
 
 What is **not** automated:
 

@@ -31,6 +31,16 @@ export function sendSuccess(res, data, status = 200) {
 }
 
 /**
+ * Send a success envelope with the pagination metadata documented in API.md.
+ *
+ * Pagination lives beside `data`, not inside it, so list pages can keep their
+ * item shape identical to detail responses.
+ */
+export function sendPaginated(res, data, pagination) {
+  res.status(200).json({ success: true, data, pagination });
+}
+
+/**
  * Send an error envelope.
  * `details` is only included when it is a non-empty array, and must never
  * contain secrets, stack traces, or raw database output.

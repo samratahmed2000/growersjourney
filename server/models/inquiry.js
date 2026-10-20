@@ -78,6 +78,13 @@ const inquirySchema = new mongoose.Schema(
       enum: INQUIRY_STATUSES,
       default: INITIAL_INQUIRY_STATUS,
     },
+    statusChangedAt: { type: Date, default: undefined },
+    statusChangedBy: {
+      type: String,
+      trim: true,
+      maxlength: 128,
+      default: undefined,
+    },
   },
   {
     timestamps: true,
@@ -86,8 +93,10 @@ const inquirySchema = new mongoose.Schema(
   },
 );
 
-// Supports the future admin list: filter by status, newest first.
+// Supports the admin list: newest first, with and without a status filter.
+inquirySchema.index({ createdAt: -1 });
 inquirySchema.index({ status: 1, createdAt: -1 });
+inquirySchema.index({ service: 1, createdAt: -1 });
 
 export const Inquiry =
   mongoose.models.Inquiry ?? mongoose.model("Inquiry", inquirySchema);

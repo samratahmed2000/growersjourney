@@ -28,7 +28,7 @@ import {
 
 const ACCESS_MATRIX = [
   { role: "ADMIN", admin: 200, portal: 403 },
-  { role: "TEAM_MEMBER", admin: 200, portal: 403 },
+  { role: "TEAM_MEMBER", admin: 403, portal: 403 },
   { role: "CLIENT", admin: 403, portal: 200 },
 ];
 

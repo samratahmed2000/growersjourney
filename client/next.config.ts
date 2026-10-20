@@ -8,7 +8,10 @@ import type { NextConfig } from "next";
  * needed for the rewrite. This value is read when the Next config is evaluated
  * (build/start), never shipped to the browser.
  */
-const API_BASE_URL = process.env.API_BASE_URL ?? "http://localhost:5000/api/v1";
+const API_BASE_URL = (process.env.API_BASE_URL ?? "http://localhost:5000/api/v1").replace(
+  /\/+$/,
+  "",
+);
 
 const API_ORIGIN = (() => {
   try {
@@ -57,6 +60,10 @@ const nextConfig: NextConfig = {
         source: "/api/auth/:path*",
         destination: `${API_ORIGIN}/api/auth/:path*`,
       },
+      {
+        source: "/api/v1/admin/:path*",
+        destination: `${API_BASE_URL}/admin/:path*`,
+      },
     ];
   },
 
@@ -78,6 +85,13 @@ const nextConfig: NextConfig = {
       {
         source: "/api/auth/:path*",
         headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
+      {
+        source: "/api/v1/admin/:path*",
+        headers: [
+          { key: "Cache-Control", value: "no-store" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
       },
     ];
   },

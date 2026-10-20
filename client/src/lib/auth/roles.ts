@@ -40,6 +40,11 @@ export function isStaffRole(value: unknown): value is AppRole {
   return value === ROLES.ADMIN || value === ROLES.TEAM_MEMBER;
 }
 
+/** Task 07: the admin dashboard and its API are ADMIN-only. */
+export function isAdminRole(value: unknown): value is AppRole {
+  return value === ROLES.ADMIN;
+}
+
 export function isClientRole(value: unknown): value is AppRole {
   return value === ROLES.CLIENT;
 }

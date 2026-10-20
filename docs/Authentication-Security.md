@@ -94,14 +94,16 @@ The following arrangement was verified against the installed versions and is the
 
 Roles are stored as the exact strings `ADMIN`, `TEAM_MEMBER`, and `CLIENT` in Better Auth's admin-plugin `role` field. Unknown or missing roles are denied, never defaulted. The admin plugin marks the role field `input: false`, so the public profile update endpoint cannot set it; a direct test confirms a `CLIENT` update with `role: "ADMIN"` is rejected with `FIELD_NOT_ALLOWED`. The admin plugin's `/admin/set-role` endpoint returns `403` for a client session.
 
-The admin area accepts `ADMIN` and `TEAM_MEMBER`; the portal accepts `CLIENT` only. Staff do **not** receive implicit portal access, and `assertResourceOwner` does not grant staff implicit ownership of client records. A future support-access feature must add an explicit, audited membership check.
+The admin area accepts `ADMIN` only in Task 07; the portal accepts `CLIENT` only. A `TEAM_MEMBER` session is denied `/admin` and every `/api/v1/admin/*` endpoint. Staff do **not** receive implicit portal access, and `assertResourceOwner` does not grant staff implicit ownership of client records. A future support-access feature must add an explicit, audited membership check.
+
+Task 07's `/api/v1/admin/*` router applies `requireAuth` → `requireRole(ADMIN)` → `requireTrustedOrigin` to every management route, then sets `Cache-Control: private, no-store`. The browser calls same-origin `/api/v1/admin/*` through a Next rewrite; the Next server forwards the HttpOnly cookie to Express for page reads. A page guard is never treated as the security boundary. Request bodies and query objects are strict Zod schemas, so client-supplied roles, ownership fields, internal fields, unknown sort keys, and malformed ids are rejected rather than forwarded to Mongoose.
 
 Protected endpoints implemented in this phase:
 
 | Full path | Access | Purpose |
 | --- | --- | --- |
 | `GET /api/v1/auth/me` | Authenticated | Safe profile: id, email, name, role, session expiry. Never a token or password. |
-| `GET /api/v1/admin/access` | ADMIN, TEAM_MEMBER | Proves the admin role check. |
+| `GET /api/v1/admin/access` | ADMIN | Proves the admin role check. |
 | `GET /api/v1/portal/access` | CLIENT | Proves the client role check and denies staff. |
 
 Public routes (`/api/v1/health`, `/api/v1/health/ready`, `POST /api/v1/inquiries`, `GET /`) remain unauthenticated.

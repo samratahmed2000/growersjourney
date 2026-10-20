@@ -260,6 +260,21 @@ Create a practical agency operations dashboard.
 - Role restrictions work on the server.
 - Mobile and desktop dashboard layouts are usable.
 
+**Task 07 status**
+
+Implemented:
+
+- ADMIN-only `/admin` dashboard and sidebar, with responsive mobile navigation.
+- Dashboard summary, inquiry list/detail/status transitions, client list/create/edit/deactivate and linked projects, read-only project list/detail, service CRUD plus archive/restore, and portfolio CRUD plus archive/restore.
+- Strict server validation, pagination, search/filter/sort allowlists, object id validation, duplicate-email/slug handling, safe archive instead of hard delete, and no internal error leakage.
+- 19 Task 07 server tests (API access/validation/status/CRUD/failure, plus model/validator tests). Full server suite: 119 tests.
+- Client lint, typecheck, and production build pass; the build reports 39 route entries.
+
+Deliberately not implemented in Task 07:
+
+- Inquiry delete/assign/notes/conversion, project writes, memberships, milestones, project updates, invoices, payments, team management, portal features, AI features, and public content migration. Public `/services` and `/work` remain static.
+- Real MongoDB/Atlas persistence, real admin records, and browser automation were not verified in this environment because `server/.env` lacks the required database/auth values and the client has no browser test runner.
+
 ### Phase 8 — Client Portal and Project Tracking
 
 **Objectives**

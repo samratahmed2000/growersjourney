@@ -8,6 +8,7 @@ import { errorHandler } from "./middleware/error-handler.js";
 import healthRouter from "./routes/health.js";
 import createInquiriesRouter from "./routes/inquiries.js";
 import createAuthRouter from "./routes/auth.js";
+import createAdminRouter from "./routes/admin/index.js";
 
 /**
  * Builds the Express application.
@@ -65,6 +66,8 @@ export function createApp({
    * "protected route with no guard" state.
    */
   auth,
+  /** Injectable in tests only. Defaults to the Mongoose admin repositories. */
+  adminRepositories,
 } = {}) {
   const app = express();
 
@@ -113,6 +116,14 @@ export function createApp({
   // Protected profile/access endpoints. Every request re-validates the session.
   if (auth) {
     app.use("/api/v1", createAuthRouter({ auth }));
+    app.use(
+      "/api/v1/admin",
+      createAdminRouter({
+        auth,
+        allowedOrigins,
+        repositories: adminRepositories,
+      }),
+    );
   }
 
   app.get("/", (req, res) => {
